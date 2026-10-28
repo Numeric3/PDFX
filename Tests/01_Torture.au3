@@ -1,76 +1,76 @@
 #cs ----------------------------------------------------------------------------
-    01_Torture — exercice complet du moteur.
+    01_Torture — full workout of the engine.
 
-    Ce script ne verifie pas un rendu : il traverse volontairement toutes les
-    branches (formats, polices, encodage, primitives, images, tableaux,
-    pagination, liens, en-tetes). Il sert de reference de non-regression :
+    This script does not check a rendering: it deliberately walks every branch
+    (formats, fonts, encoding, primitives, images, tables, pagination, links,
+    headers). It serves as the non-regression reference:
 
         python Tools/pdfcheck.py Tests/01_Torture.pdf
-        ./Tests/compare.sh          (compare au PDF temoin, dates neutralisees)
+        python Tools/regress.py Tests/Reference Examples Tests
 #ce ----------------------------------------------------------------------------
 
 #include "../PDFX.au3"
 
-Global $g_Jpeg = @ScriptDir & "\..\..\Direct2D\examples\mandrill.jpg"
-Global $g_Png = @ScriptDir & "\..\..\MIPDF\png.png"
+Global $g_Jpeg = @ScriptDir & "\Assets\mandrill.jpg"
+Global $g_Png = @ScriptDir & "\Assets\png.png"
 
-Local $oDocument = _PDFX_New("A5", "L", 12)
+Global $oDocument = _PDFX_New("A5", "L", 12)
 _PDFX_SetMeta($oDocument, "Torture", "Numeric1", "Non-regression", "pdfx;test")
 _PDFX_SetHeader($oDocument, "PDFX · torture", "", "{date}", 7)
 _PDFX_SetFooter($oDocument, "page {page}/{pages}", "", "n", 7)
 
-; ---------------------------------------------------------------- page 1 : polices
+; ---------------------------------------------------------------- page 1: fonts
 _PDFX_SetFont($oDocument, "Helvetica", 16, "B")
 _PDFX_SetFill($oDocument, 0x101828)
-_PDFX_Text($oDocument, 24, 24, "Polices et encodage")
+_PDFX_Text($oDocument, 24, 24, "Fonts and encoding")
 
-Local $aStyles[4] = ["", "B", "I", "BI"]
-Local $aFamilies[3] = ["Helvetica", "Times", "Courier"]
-Local $fY = 42
+Global $aStyles[4] = ["", "B", "I", "BI"]
+Global $aFamilies[3] = ["Helvetica", "Times", "Courier"]
+Global $fY = 42
 For $iFamily = 0 To UBound($aFamilies) - 1
     For $iStyle = 0 To UBound($aStyles) - 1
         _PDFX_SetFont($oDocument, $aFamilies[$iFamily], 10, $aStyles[$iStyle])
         _PDFX_SetFill($oDocument, 0x374151)
         _PDFX_Text($oDocument, 24, $fY, $aFamilies[$iFamily] & " " & $aStyles[$iStyle] & _
-            " — Portez ce vieux whisky au juge blond qui fume.")
+            " — The quick brown fox jumps over the lazy dog.")
         $fY += 12
     Next
 Next
 
 _PDFX_SetFont($oDocument, "Helvetica", 10)
 _PDFX_SetFill($oDocument, 0x1F3864)
-_PDFX_Text($oDocument, 24, $fY + 4, "Accents : é è ê ë à â ä ù û ü ô ö î ï ç œ Œ æ Æ ß")
-_PDFX_Text($oDocument, 24, $fY + 16, "Typo : « guillemets » — tiret € 12,50 ° 45 ± 2 · 3 … 4")
+_PDFX_Text($oDocument, 24, $fY + 4, "Accents: é è ê ë à â ä ù û ü ô ö î ï ç œ Œ æ Æ ß")
+_PDFX_Text($oDocument, 24, $fY + 16, "Typo: «guillemets» — dash € 12.50 ° 45 ± 2 · 3 … 4")
 
-; mesure et alignements
-Local $fBoxW = 200
+; measurements and alignment
+Global $fBoxW = 200
 _PDFX_SetFill($oDocument, 0x6B7280)
-_PDFX_Text($oDocument, 24, $fY + 32, "Largeur mesuree : " & Round(_PDFX_TextWidth($oDocument, "Portez ce vieux whisky", 10), 2) & " pt")
+_PDFX_Text($oDocument, 24, $fY + 32, "Measured width: " & Round(_PDFX_TextWidth($oDocument, "The quick brown fox", 10), 2) & " pt")
 
-_PDFX_TextAlign($oDocument, 24, $fY + 46, $fBoxW, "aligne a gauche", "L")
-_PDFX_TextAlign($oDocument, 24, $fY + 58, $fBoxW, "centre", "C")
-_PDFX_TextAlign($oDocument, 24, $fY + 70, $fBoxW, "aligne a droite", "R")
+_PDFX_TextAlign($oDocument, 24, $fY + 46, $fBoxW, "left aligned", "L")
+_PDFX_TextAlign($oDocument, 24, $fY + 58, $fBoxW, "centred", "C")
+_PDFX_TextAlign($oDocument, 24, $fY + 70, $fBoxW, "right aligned", "R")
 
-; ---------------------------------------------------------------- page 2 : texte long
+; ---------------------------------------------------------------- page 2: long text
 _PDFX_AddPage($oDocument)
 _PDFX_SetFont($oDocument, "Times", 10)
 _PDFX_SetFill($oDocument, 0x101828)
-_PDFX_Text($oDocument, 24, 24, "Retour a la ligne et pagination")
+_PDFX_Text($oDocument, 24, 24, "Line breaking and pagination")
 
-Local $sLong = "Un paragraphe assez long pour occuper plusieurs lignes dans une colonne etroite, " & _
-    "avec des accents (éléphant, naïf, côté) et un mot tres long a couper : " & _
-    "anticonstitutionnellement. " & @CRLF & @CRLF & _
-    "Deuxieme paragraphe apres un saut de ligne explicite, pour verifier que le decoupage " & _
-    "respecte les retours chariot du texte source."
-Local $fY2 = _PDFX_TextWrap($oDocument, 24, 42, 300, $sLong, 10, 13)
+Global $sLong = "A paragraph long enough to fill several lines in a narrow column, " & _
+    "with accented words (café, naïve, façade) and one very long word to break: " & _
+    "antidisestablishmentarianism. " & @CRLF & @CRLF & _
+    "A second paragraph after an explicit line break, to check that the splitter " & _
+    "respects the carriage returns of the source text."
+Global $fY2 = _PDFX_TextWrap($oDocument, 24, 42, 300, $sLong, 10, 13)
 
 For $iParagraph = 1 To 12
     $fY2 = _PDFX_TextWrap($oDocument, 24, $fY2 + 6, 300, _
-        "Paragraphe de remplissage " & $iParagraph & " : la pagination automatique doit " & _
-        "passer a la page suivante quand la marge basse est atteinte, sans perdre de ligne.", 10, 13, "L", True)
+        "Filler paragraph " & $iParagraph & ": automatic pagination must move to " & _
+        "the next page when the bottom margin is reached, without losing a line.", 10, 13, "L", True)
 Next
 
-; ---------------------------------------------------------------- page 3 : formes
+; ---------------------------------------------------------------- page 3: shapes
 _PDFX_AddPage($oDocument)
 _PDFX_SetFont($oDocument, "Helvetica", 12, "B")
 _PDFX_SetFill($oDocument, 0x101828)
@@ -92,7 +92,7 @@ _PDFX_Ellipse($oDocument, 254, 71, 30, 15, $PDFX_FILL)
 _PDFX_SetFill($oDocument, 0xFECACA)
 _PDFX_Circle($oDocument, 320, 71, 15, $PDFX_FILL)
 
-Local $aPoints[4][2] = [[24, 100], [60, 130], [96, 100], [132, 130]]
+Global $aPoints[4][2] = [[24, 100], [60, 130], [96, 100], [132, 130]]
 _PDFX_SetStroke($oDocument, 0x7C3AED)
 _PDFX_SetLineWidth($oDocument, 1)
 _PDFX_Polyline($oDocument, $aPoints, False, $PDFX_STROKE)
@@ -114,7 +114,7 @@ _PDFX_SetFill($oDocument, 0xDC2626)
 _PDFX_Rect($oDocument, 54, 155, 80, 40, $PDFX_FILL)
 _PDFX_SetAlpha($oDocument, 1)
 
-; ---------------------------------------------------------------- page 4 : images
+; ---------------------------------------------------------------- page 4: images
 _PDFX_AddPage($oDocument)
 _PDFX_SetFont($oDocument, "Helvetica", 12, "B")
 _PDFX_SetFill($oDocument, 0x101828)
@@ -126,10 +126,10 @@ If FileExists($g_Jpeg) Then
     _PDFX_ImageFit($oDocument, $g_Jpeg, 150, 42, 60, 40, "LT")
     _PDFX_ImageFit($oDocument, $g_Jpeg, 216, 42, 60, 40, "RB")
 
-    Local $aInfo = _PDFX_ImageInfo($oDocument, $g_Jpeg)
+    Global $aInfo = _PDFX_ImageInfo($oDocument, $g_Jpeg)
     _PDFX_SetFont($oDocument, "Courier", 7)
     _PDFX_SetFill($oDocument, 0x6B7280)
-    _PDFX_Text($oDocument, 24, 92, $aInfo[0] & "x" & $aInfo[1] & " px · " & $aInfo[5] & " · " & $aInfo[4] & " octets")
+    _PDFX_Text($oDocument, 24, 92, $aInfo[0] & "x" & $aInfo[1] & " px · " & $aInfo[5] & " · " & $aInfo[4] & " bytes")
 EndIf
 
 If FileExists($g_Png) Then
@@ -137,57 +137,57 @@ If FileExists($g_Png) Then
     _PDFX_Image($oDocument, $g_Png, 290, 105, 50, 50)
     _PDFX_SetFont($oDocument, "Helvetica", 8)
     _PDFX_SetFill($oDocument, 0x6B7280)
-    _PDFX_Text($oDocument, 290, 96, "PNG aplati sur blanc")
+    _PDFX_Text($oDocument, 290, 96, "PNG flattened onto white")
 EndIf
 
-; ---------------------------------------------------------------- page 5 : tableaux
+; ---------------------------------------------------------------- page 5: tables
 _PDFX_AddPage($oDocument)
 _PDFX_SetFont($oDocument, "Helvetica", 12, "B")
 _PDFX_SetFill($oDocument, 0x101828)
-_PDFX_Text($oDocument, 24, 24, "Tableaux")
+_PDFX_Text($oDocument, 24, 24, "Tables")
 
-Local $aCols[4][3] = [ _
+Global $aCols[4][3] = [ _
     ["Reference", 0.40, "L"], _
-    ["Quantite", 0.15, "C"], _
-    ["Prix unitaire", 0.20, "R"], _
+    ["Quantity", 0.15, "C"], _
+    ["Unit price", 0.20, "R"], _
     ["Total", 0.25, "R"]]
 
-Local $aRows[26][4]
+Global $aRows[26][4]
 For $iRow = 0 To 25
-    $aRows[$iRow][0] = "Article " & StringFormat("%02d", $iRow + 1) & " — libelle qui peut passer sur deux lignes"
+    $aRows[$iRow][0] = "Item " & StringFormat("%02d", $iRow + 1) & " — a label long enough to wrap onto two lines"
     $aRows[$iRow][1] = String($iRow + 1)
-    $aRows[$iRow][2] = StringFormat("%d,%02d EUR", 10 + $iRow, $iRow * 7)
-    $aRows[$iRow][3] = StringFormat("%d,%02d EUR", 100 + $iRow * 3, $iRow)
+    $aRows[$iRow][2] = StringFormat("%d.%02d EUR", 10 + $iRow, $iRow * 7)
+    $aRows[$iRow][3] = StringFormat("%d.%02d EUR", 100 + $iRow * 3, $iRow)
 Next
 
 _PDFX_SetFont($oDocument, "Helvetica", 8)
-Local $fY3 = _PDFX_Table($oDocument, 24, 42, 380, $aCols, $aRows, _
+Global $fY3 = _PDFX_Table($oDocument, 24, 42, 380, $aCols, $aRows, _
     "padding=4;fontsize=8;zebra=1;headfill=0x1F3864;headcolor=0xFFFFFF;border=0.4;pagebreak=1")
 
 _PDFX_SetFont($oDocument, "Helvetica", 9, "B")
 _PDFX_SetFill($oDocument, 0x101828)
-_PDFX_Text($oDocument, 24, $fY3 + 10, "Sans filets ni fond d'en-tete")
+_PDFX_Text($oDocument, 24, $fY3 + 10, "Without rules or header fill")
 
-Local $aCols2[2][3] = [["Cle", 0.5, "L"], ["Valeur", 0.5, "R"]]
-Local $aRows2[3][2] = [["alpha", "1"], ["beta", "2"], ["gamma", "3"]]
+Global $aCols2[2][3] = [["Key", 0.5, "L"], ["Value", 0.5, "R"]]
+Global $aRows2[3][2] = [["alpha", "1"], ["beta", "2"], ["gamma", "3"]]
 _PDFX_SetFont($oDocument, "Times", 9)
 _PDFX_Table($oDocument, 24, $fY3 + 22, 380, $aCols2, $aRows2, _
     "border=0;headfill=-1;fontsize=9;padding=3")
 
-; ---------------------------------------------------------------- liens + fin
+; ---------------------------------------------------------------- link + end
 _PDFX_Link($oDocument, 24, 24, 120, 16, "https://www.autoitscript.com/forum/")
 
 _PDFX_AddPage($oDocument, _PDFX_Mm(210), _PDFX_Mm(297))
 _PDFX_SetFont($oDocument, "Helvetica", 10)
 _PDFX_SetFill($oDocument, 0x101828)
 _PDFX_Text($oDocument, _PDFX_Mm(20), _PDFX_Mm(20), _
-    "Derniere page A4 inseree par _PDFX_AddPage avec une taille explicite.")
+    "Last page, A4, inserted by _PDFX_AddPage with an explicit size.")
 
-; ---------------------------------------------------------------- sortie
-Local $sOut = @ScriptDir & "\01_Torture.pdf"
+; ---------------------------------------------------------------- output
+Global $sOut = @ScriptDir & "\01_Torture.pdf"
 If _PDFX_Save($oDocument, $sOut) Then
-    ConsoleWrite("OK 01_Torture.pdf (" & FileGetSize($sOut) & " octets, " & _PDFX_PageCount($oDocument) & " pages)" & @CRLF)
+    ConsoleWrite("OK 01_Torture.pdf (" & FileGetSize($sOut) & " bytes, " & _PDFX_PageCount($oDocument) & " pages)" & @CRLF)
 Else
-    ConsoleWrite("! ECHEC @error=" & @error & @CRLF)
+    ConsoleWrite("! FAILED @error=" & @error & @CRLF)
 EndIf
 _PDFX_Close($oDocument)

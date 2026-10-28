@@ -1,73 +1,68 @@
 ; #INDEX# =======================================================================================================================
 ; Title .........: PDFX
 ; AutoIt Version : 3.3.16.1
-; Language ......: Francais
-; Description ...: Moteur PDF autonome pour AutoIt : texte, formes, images,
-;                  tableaux, liens, signets, en-tete et pied de page. Aucune
-;                  dependance externe ; GDI+ (fourni avec AutoIt) sert
-;                  uniquement a convertir PNG, BMP et GIF en JPEG, et un
-;                  compresseur DEFLATE ecrit en AutoIt pur allege les flux de
-;                  contenu.
+; Language ......: English
+; Description ...: Self-contained PDF engine for AutoIt: text, shapes, images,
+;                  tables, links, bookmarks, header and footer. No external
+;                  dependency; GDI+ (shipped with AutoIt) is only used to convert
+;                  PNG, BMP and GIF to JPEG, and a DEFLATE compressor written in
+;                  pure AutoIt shrinks the content streams.
 ; Author(s) .....: Numeric1
-; Link ..........: https://www.autoitscript.com/forum/
-; Version .......: 1.3.0
+; Link ..........: https://www.autoitscript.com/forum/topic/213930-udf-pdfx/
+; Version .......: 1.4.0
 ; Copyright .....: (c) 2026 Numeric1
-; License .......: MIT ou domaine public, au choix.
+; License .......: MIT or public domain, at your choice.
 ;
-; ------------------------------- DEMARRAGE RAPIDE -------------------------------
+; ---------------------------------QUICK START----------------------------------
 ;
 ;   #include "PDFX.au3"
 ;
-;   Local $oDocument = _PDFX_New()                       ; A4 portrait, marge 15 mm
-;   _PDFX_SetCompression($oDocument, 6)                  ; flux de contenu en FlateDecode
+;   Local $oDocument = _PDFX_New()                       ; A4 portrait, 15 mm margin
+;   _PDFX_SetCompression($oDocument, 6)                  ; content streams in FlateDecode
 ;   _PDFX_SetFont($oDocument, "Helvetica", 24, "B")
-;   _PDFX_Text($oDocument, 40, 40, "Rapport mensuel")    ; y = haut du texte
-;   _PDFX_AddBookmark($oDocument, "Titre", 0, 1, 40)     ; signet vers la page 1
-;   _PDFX_SetPageMode($oDocument, "UseOutlines")         ; volet des signets ouvert
+;   _PDFX_Text($oDocument, 40, 40, "Monthly report")      ; y = top of the text
+;   _PDFX_AddBookmark($oDocument, "Title", 0, 1, 40)     ; bookmark to page 1
+;   _PDFX_SetPageMode($oDocument, "UseOutlines")         ; bookmark pane open
 ;   _PDFX_SetFont($oDocument, "Helvetica", 11)
-;   _PDFX_TextWrap($oDocument, 40, 80, 515, "Texte long ...")
-;   _PDFX_Save($oDocument, @ScriptDir & "\rapport.pdf")
+;   _PDFX_TextWrap($oDocument, 40, 80, 515, "Long text ...")
+;   _PDFX_Save($oDocument, @ScriptDir & "\report.pdf")
 ;   _PDFX_Close($oDocument)
 ;
-; --------------------------------- PRINCIPES ----------------------------------
+; ----------------------------------PRINCIPLES----------------------------------
 ;
-; * Un document est un handle (tableau) : aucun etat global, plusieurs PDF
-;   peuvent etre construits en parallele dans le meme script.
-; * Un document s'ecrit une seule fois : _PDFX_Save() gele le handle et
-;   _PDFX_AddPage() renvoie ensuite @error = 2. Les dates sont en temps
-;   universel et /ID est une empreinte MD5 deterministe du contenu.
-; * Coordonnees en points (1 pt = 1/72 pouce), origine en HAUT et a GAUCHE.
-;   _PDFX_Mm() convertit les millimetres ; le passage a l'espace PDF
-;   (origine en bas a gauche) est interne.
-; * Les largeurs de texte viennent des metriques AFM des polices standard :
-;   alignements et retours a la ligne sont exacts, sans rendu GDI.
-; * Encodage WinAnsi : les accents francais passent sans reglage.
-; * Images : JPEG embarque octet pour octet ; PNG, BMP et GIF convertis en
-;   JPEG sur fond blanc via GDI+, puis dedupliques par chemin.
-; * Compression optionnelle : _PDFX_SetCompression() ecrit les flux de contenu
-;   en FlateDecode (zlib), avec repli automatique sur le flux brut.
-; * Navigation : _PDFX_AddBookmark() construit un arbre /Outlines hierarchique
-;   et _PDFX_LinkPage() relie deux pages sans passer par une URL.
+; * A document is a handle (array): no global state, several PDFs can be
+;   built in parallel in the same script.
+; * A document is written only once: _PDFX_Save() freezes the handle and
+;   _PDFX_AddPage() then returns @error = 2. Dates are in universal time and
+;   /ID is a deterministic MD5 fingerprint of the content.
+; * Coordinates in points (1 pt = 1/72 inch), origin at the TOP LEFT.
+;   _PDFX_Mm() converts millimetres; the switch to PDF space (origin at the
+;   bottom left) is internal.
+; * Text widths come from the AFM metrics of the standard fonts:
+;   alignment and word wrapping are exact, with no GDI rendering.
+; * WinAnsi encoding: Western European accents pass without any setting.
+; * Images: JPEG embedded byte for byte; PNG, BMP and GIF converted to
+;   JPEG on white via GDI+, then deduplicated by path.
+; * Optional compression: _PDFX_SetCompression() writes content streams
+;   with FlateDecode (zlib), with automatic fallback to the raw stream.
+; * Navigation: _PDFX_AddBookmark() builds a hierarchical /Outlines tree
+;   and _PDFX_LinkPage() links two pages without going through a URL.
 ;
-; ---------------------------------- LIMITES -----------------------------------
+; ------------------------------------LIMITS------------------------------------
 ;
-; * Compresseur en AutoIt pur : de l'ordre de 30 Ko/s et un taux proche de
-;   zlib niveau 1. Les flux non compresses restent le defaut.
-; * Pas de polices TrueType embarquees : seuls les caracteres couverts par
-;   WinAnsi sont rendus, les autres deviennent '?'.
-; * Pas de lecture ni de modification de PDF existants.
-; * Signets et liens internes ne visent que des pages du document : pas de
-;   destinations nommees, pas d'actions JavaScript ni de pieces jointes.
+; * Pure AutoIt compressor: about 30 KB/s and a ratio close to zlib level 1.
+;   Uncompressed streams remain the default.
+; * No embedded TrueType fonts: only characters covered by WinAnsi are
+;   rendered, the others become '?'.
+; * No reading or modifying existing PDFs.
+; * Bookmarks and internal links only target pages of the document: no
+;   named destinations, no JavaScript actions and no attachments.
 ;
-; -------------------------------- ORIGINALITE ---------------------------------
+; ---------------------------------ORIGINALITY----------------------------------
 ;
-; Implementation ecrite pour ce projet d'apres la norme ISO 32000-1:2008
-; (objets indirects, table xref, flux de contenu, annotations) et les
-; metriques AFM publiques des polices Core 14 d'Adobe. Aucun code, texte ni
-; commentaire n'est repris d'AutoItObject, de MPDF ou d'un autre UDF : seule
-; la disposition conventionnelle des blocs de documentation AutoIt
-; (#INDEX#, #CURRENT#, #FUNCTION#) est partagee, comme dans tout include
-; officiel livre avec AutoIt.
+; Implementation written for this project from ISO 32000-1:2008 (indirect
+; objects, xref table, content streams, annotations) and the public AFM
+; metrics of Adobe's Core 14 fonts.
 ;
 ; ===============================================================================================================================
 
@@ -183,102 +178,102 @@
 ;_PDFX_ZlibReverseBits
 ; ===============================================================================================================================
 
-; Version du moteur, reprise dans les metadonnees /Creator et /Producer.
-Global Const $PDFX_VERSION = "1.3.0"
+; Engine version, echoed in the /Creator and /Producer metadata.
+Global Const $PDFX_VERSION = "1.4.0"
 
-#Region - Constantes internes ---------------------------------------------------------------------------------------------------
-; Handle de document : chaque constante est un index du tableau renvoye par _PDFX_New().
-Global Const $__PDFX_DOC_OBJECTS = 0         ; corps des objets indirects (index 1..N)
-Global Const $__PDFX_DOC_OBJECTCOUNT = 1     ; nombre d'objets
-Global Const $__PDFX_DOC_PAGES = 2           ; [n][4] = w, h, contenu, annotations
-Global Const $__PDFX_DOC_FONTS = 3           ; [n][4] = baseFont, objNum, nomRessource, tableLargeur
-Global Const $__PDFX_DOC_IMAGES = 4          ; [n][5] = chemin, objNum, largeur px, hauteur px, nomRessource
-Global Const $__PDFX_DOC_STATES = 5          ; [n][3] = cle, objNum, nomRessource (ExtGState)
-Global Const $__PDFX_DOC_WIDTH = 6           ; largeur page courante (pt)
-Global Const $__PDFX_DOC_HEIGHT = 7          ; hauteur page courante (pt)
-Global Const $__PDFX_DOC_CURRENTPAGE = 8     ; index de page courante (0-based, -1 = aucune)
-Global Const $__PDFX_DOC_CONTENT = 9         ; flux de contenu de la page courante
-Global Const $__PDFX_DOC_ANNOTS = 10         ; annotations de la page courante
-Global Const $__PDFX_DOC_FONT = 11           ; index de police courante
-Global Const $__PDFX_DOC_FONTSIZE = 12       ; taille courante
-Global Const $__PDFX_DOC_FILL = 13           ; "r g b" courant
-Global Const $__PDFX_DOC_STROKE = 14         ; "r g b" courant
-Global Const $__PDFX_DOC_LINEWIDTH = 15      ; epaisseur de trait
-Global Const $__PDFX_DOC_METADATA = 16       ; [titre, auteur, sujet, mots-cles]
-Global Const $__PDFX_DOC_HEADERFOOTER = 17   ; [hG, hC, hD, fG, fC, fD, taille, coulH, policeH, styleH, coulF, policeF, styleF]
-Global Const $__PDFX_DOC_MARGIN = 18         ; marge par defaut (pt)
-Global Const $__PDFX_DOC_DEFAULTHEIGHT = 19  ; hauteur par defaut des nouvelles pages
-Global Const $__PDFX_DOC_DEFAULTWIDTH = 20   ; largeur par defaut
-Global Const $__PDFX_DOC_HFAPPLIED = 21      ; en-tete/pied deja insere dans les pages
-Global Const $__PDFX_DOC_SAVED = 22          ; document deja ecrit : gele
-Global Const $__PDFX_DOC_COMPRESSION = 23    ; niveau de compression des flux de contenu (0 = brut)
-Global Const $__PDFX_DOC_BOOKMARKS = 24      ; [n][4] = titre, niveau, page (base 0), y haut (-1 = /Fit)
-Global Const $__PDFX_DOC_PAGELINKS = 25      ; [n][7] = objet, page cible, y cible, rect (4 valeurs)
-Global Const $__PDFX_DOC_PAGEMODE = 26       ; "" (auto) ou UseNone, UseOutlines, UseThumbs, FullScreen
-Global Const $__PDFX_DOC_PAGELAYOUT = 27     ; "" ou SinglePage, OneColumn, TwoColumnLeft, ...
-Global Const $__PDFX_DOC_SLOTS = 28          ; nombre total de slots
+#Region - Internal constants ----------------------------------------------------------------------------------------------------
+; Document handle: each constant is an index in the array returned by _PDFX_New().
+Global Const $__PDFX_DOC_OBJECTS = 0         ; bodies of the indirect objects (index 1..N)
+Global Const $__PDFX_DOC_OBJECTCOUNT = 1     ; number of objects
+Global Const $__PDFX_DOC_PAGES = 2           ; [n][4] = w, h, content, annotations
+Global Const $__PDFX_DOC_FONTS = 3           ; [n][4] = baseFont, objNum, resourceName, widthTable
+Global Const $__PDFX_DOC_IMAGES = 4          ; [n][5] = path, objNum, width px, height px, resourceName
+Global Const $__PDFX_DOC_STATES = 5          ; [n][3] = key, objNum, resourceName (ExtGState)
+Global Const $__PDFX_DOC_WIDTH = 6           ; current page width (pt)
+Global Const $__PDFX_DOC_HEIGHT = 7          ; current page height (pt)
+Global Const $__PDFX_DOC_CURRENTPAGE = 8     ; current page index (0-based, -1 = none)
+Global Const $__PDFX_DOC_CONTENT = 9         ; content stream of the current page
+Global Const $__PDFX_DOC_ANNOTS = 10         ; annotations of the current page
+Global Const $__PDFX_DOC_FONT = 11           ; current font index
+Global Const $__PDFX_DOC_FONTSIZE = 12       ; current size
+Global Const $__PDFX_DOC_FILL = 13           ; current "r g b"
+Global Const $__PDFX_DOC_STROKE = 14         ; current "r g b"
+Global Const $__PDFX_DOC_LINEWIDTH = 15      ; line width
+Global Const $__PDFX_DOC_METADATA = 16       ; [title, author, subject, keywords]
+Global Const $__PDFX_DOC_HEADERFOOTER = 17   ; [hL, hC, hR, fL, fC, fR, size, hColour, hFont, hStyle, fColour, fFont, fStyle]
+Global Const $__PDFX_DOC_MARGIN = 18         ; default margin (pt)
+Global Const $__PDFX_DOC_DEFAULTHEIGHT = 19  ; default height of new pages
+Global Const $__PDFX_DOC_DEFAULTWIDTH = 20   ; default width
+Global Const $__PDFX_DOC_HFAPPLIED = 21      ; header/footer already inserted into the pages
+Global Const $__PDFX_DOC_SAVED = 22          ; document already written: frozen
+Global Const $__PDFX_DOC_COMPRESSION = 23    ; content stream compression level (0 = raw)
+Global Const $__PDFX_DOC_BOOKMARKS = 24      ; [n][4] = title, level, page (0-based), top y (-1 = /Fit)
+Global Const $__PDFX_DOC_PAGELINKS = 25      ; [n][7] = object, target page, target y, rect (4 values)
+Global Const $__PDFX_DOC_PAGEMODE = 26       ; "" (auto) or UseNone, UseOutlines, UseThumbs, FullScreen
+Global Const $__PDFX_DOC_PAGELAYOUT = 27     ; "" or SinglePage, OneColumn, TwoColumnLeft, ...
+Global Const $__PDFX_DOC_SLOTS = 28          ; total number of slots
 
-; Styles de peinture acceptes par les primitives et par _PDFX_Table().
+; Paint styles accepted by the primitives and by _PDFX_Table().
 Global Const $PDFX_STROKE = 0
 Global Const $PDFX_FILL = 1
 Global Const $PDFX_BOTH = 2
 
-; Identifiants internes des tables de metriques AFM.
+; Internal identifiers of the AFM metric tables.
 Global Const $PDFX_FONT_HELVETICA = 0
 Global Const $PDFX_FONT_HELVETICA_BOLD = 1
 Global Const $PDFX_FONT_TIMES = 2
 Global Const $PDFX_FONT_TIMES_BOLD = 3
 Global Const $PDFX_FONT_COURIER = 4
 
-; Largeurs AFM (1/1000 em) pour les codes ASCII 32..126.
+; AFM widths (1/1000 em) for ASCII codes 32..126.
 Global Const $PDFX_AFM_HELVETICA[95] = [278, 278, 355, 556, 556, 889, 667, 222, 333, 333, 389, 584, 278, 333, 278, 278, _
-	556, 556, 556, 556, 556, 556, 556, 556, 556, 556, 278, 278, 584, 584, 584, 556, _
-	1015, 667, 667, 722, 722, 667, 611, 778, 722, 278, 500, 667, 556, 833, 722, 778, _
-	667, 778, 722, 667, 611, 722, 667, 944, 667, 667, 611, 278, 278, 278, 469, 556, _
-	222, 556, 556, 500, 556, 556, 278, 556, 556, 222, 222, 500, 222, 833, 556, 556, _
-	556, 556, 333, 500, 278, 556, 500, 722, 500, 500, 500, 334, 260, 334, 584]
+		556, 556, 556, 556, 556, 556, 556, 556, 556, 556, 278, 278, 584, 584, 584, 556, _
+		1015, 667, 667, 722, 722, 667, 611, 778, 722, 278, 500, 667, 556, 833, 722, 778, _
+		667, 778, 722, 667, 611, 722, 667, 944, 667, 667, 611, 278, 278, 278, 469, 556, _
+		222, 556, 556, 500, 556, 556, 278, 556, 556, 222, 222, 500, 222, 833, 556, 556, _
+		556, 556, 333, 500, 278, 556, 500, 722, 500, 500, 500, 334, 260, 334, 584]
 
 Global Const $PDFX_AFM_HELVETICA_BOLD[95] = [278, 333, 474, 556, 556, 889, 722, 278, 333, 333, 389, 584, 278, 333, 278, 278, _
-	556, 556, 556, 556, 556, 556, 556, 556, 556, 556, 333, 333, 584, 584, 584, 611, _
-	975, 722, 722, 722, 722, 667, 611, 778, 722, 278, 556, 722, 611, 833, 722, 778, _
-	667, 778, 722, 667, 611, 722, 667, 944, 667, 667, 611, 333, 278, 333, 584, 556, _
-	278, 556, 611, 556, 611, 556, 333, 611, 611, 278, 278, 556, 278, 889, 611, 611, _
-	611, 611, 389, 556, 333, 611, 556, 778, 556, 556, 500, 389, 280, 389, 584]
+		556, 556, 556, 556, 556, 556, 556, 556, 556, 556, 333, 333, 584, 584, 584, 611, _
+		975, 722, 722, 722, 722, 667, 611, 778, 722, 278, 556, 722, 611, 833, 722, 778, _
+		667, 778, 722, 667, 611, 722, 667, 944, 667, 667, 611, 333, 278, 333, 584, 556, _
+		278, 556, 611, 556, 611, 556, 333, 611, 611, 278, 278, 556, 278, 889, 611, 611, _
+		611, 611, 389, 556, 333, 611, 556, 778, 556, 556, 500, 389, 280, 389, 584]
 
 Global Const $PDFX_AFM_TIMES[95] = [250, 333, 408, 500, 500, 833, 778, 333, 333, 333, 500, 564, 250, 333, 250, 278, _
-	500, 500, 500, 500, 500, 500, 500, 500, 500, 500, 278, 278, 564, 564, 564, 444, _
-	921, 722, 667, 667, 722, 611, 556, 722, 722, 333, 389, 722, 611, 889, 722, 722, _
-	556, 722, 667, 556, 611, 722, 722, 944, 722, 722, 611, 333, 278, 333, 469, 500, _
-	333, 444, 500, 444, 500, 444, 333, 500, 500, 278, 278, 500, 278, 778, 500, 500, _
-	500, 500, 333, 389, 278, 500, 500, 722, 500, 500, 444, 480, 200, 480, 541]
+		500, 500, 500, 500, 500, 500, 500, 500, 500, 500, 278, 278, 564, 564, 564, 444, _
+		921, 722, 667, 667, 722, 611, 556, 722, 722, 333, 389, 722, 611, 889, 722, 722, _
+		556, 722, 667, 556, 611, 722, 722, 944, 722, 722, 611, 333, 278, 333, 469, 500, _
+		333, 444, 500, 444, 500, 444, 333, 500, 500, 278, 278, 500, 278, 778, 500, 500, _
+		500, 500, 333, 389, 278, 500, 500, 722, 500, 500, 444, 480, 200, 480, 541]
 
 Global Const $PDFX_AFM_TIMES_BOLD[95] = [250, 333, 555, 500, 500, 1000, 833, 333, 333, 333, 500, 570, 250, 333, 250, 278, _
-	500, 500, 500, 500, 500, 500, 500, 500, 500, 500, 333, 333, 570, 570, 570, 500, _
-	930, 722, 667, 722, 722, 667, 611, 778, 778, 389, 500, 778, 667, 944, 722, 778, _
-	611, 778, 722, 556, 667, 722, 722, 1000, 722, 722, 667, 333, 278, 333, 581, 500, _
-	333, 500, 556, 444, 556, 444, 333, 500, 556, 278, 333, 556, 278, 833, 556, 500, _
-	556, 556, 444, 389, 333, 556, 500, 722, 500, 500, 444, 394, 220, 394, 520]
+		500, 500, 500, 500, 500, 500, 500, 500, 500, 500, 333, 333, 570, 570, 570, 500, _
+		930, 722, 667, 722, 722, 667, 611, 778, 778, 389, 500, 778, 667, 944, 722, 778, _
+		611, 778, 722, 556, 667, 722, 722, 1000, 722, 722, 667, 333, 278, 333, 581, 500, _
+		333, 500, 556, 444, 556, 444, 333, 500, 556, 278, 333, 556, 278, 833, 556, 500, _
+		556, 556, 444, 389, 333, 556, 500, 722, 500, 500, 444, 394, 220, 394, 520]
 
-; Caracteres speciaux WinAnsi : 0 Æ, 1 æ, 2 Ø, 3 ø, 4 ß, 5 ×, 6 ÷, 7 Ð, 8 ð, 9 Þ, 10 þ
+; WinAnsi special characters: 0 AE, 1 ae, 2 Oslash, 3 oslash, 4 sharp s, 5 multiply, 6 divide, 7 Eth, 8 eth, 9 Thorn, 10 thorn
 Global Const $PDFX_AFM_SPECIAL[11][4] = [ _
-	[1000, 1000, 889, 1000], _
-	[889, 889, 444, 500], _
-	[778, 778, 722, 778], _
-	[611, 611, 500, 611], _
-	[611, 556, 500, 556], _
-	[584, 584, 564, 570], _
-	[584, 584, 564, 570], _
-	[722, 722, 722, 722], _
-	[556, 556, 500, 556], _
-	[667, 611, 556, 611], _
-	[556, 556, 500, 556]]
+		[1000, 1000, 889, 1000], _
+		[889, 889, 444, 500], _
+		[778, 778, 722, 778], _
+		[611, 611, 500, 611], _
+		[611, 556, 500, 556], _
+		[584, 584, 564, 570], _
+		[584, 584, 564, 570], _
+		[722, 722, 722, 722], _
+		[556, 556, 500, 556], _
+		[667, 611, 556, 611], _
+		[556, 556, 500, 556]]
 
-; Etat global minimal : cycle de vie de GDI+ pour les images non JPEG.
+; Minimal global state: GDI+ lifecycle for non-JPEG images.
 Global $__PDFX_GdiPlusLoaded = False
 Global $__PDFX_GdiPlusOwned = False
 
-; Compresseur DEFLATE : tables figees, construites au premier usage, et profondeur de recherche
-; LZ77 associee a chaque niveau de compression (0 = flux brut).
+; DEFLATE compressor: fixed tables, built on first use, and the LZ77 search depth
+; associated with each compression level (0 = raw stream).
 Global $__PDFX_ZLIB_READY = False
 Global $__PDFX_ZLIB_LITCODE[288]
 Global $__PDFX_ZLIB_LITBITS[288]
@@ -290,26 +285,26 @@ Global $__PDFX_ZLIB_DISTEXTRA[30]
 Global $__PDFX_ZLIB_DISTBASE[30]
 Global $__PDFX_ZLIB_HEX[256]
 Global Const $__PDFX_ZLIB_DEPTH[10] = [0, 1, 2, 3, 4, 6, 8, 12, 16, 24]
-#EndRegion
+#EndRegion - Internal constants ----------------------------------------------------------------------------------------------------
 
-#Region - Cycle de vie et pages -------------------------------------------------------------------------------------------------
-; Creation du document, ajout de pages, dimensions et marges.
+#Region - Lifecycle and pages ---------------------------------------------------------------------------------------------------
+; Document creation, page addition, dimensions and margins.
 
 ; #FUNCTION# ====================================================================================================================
 ; Name...........: _PDFX_New
-; Description ...: Cree un document PDF en memoire et ouvre sa premiere page.
+; Description ...: Creates a PDF document in memory and opens its first page.
 ; Syntax.........: _PDFX_New($sFormat = "A4", $sOrient = "P", $iMarginMm = 15)
-; Parameters ....: $sFormat   - format de page : A4 (defaut), A3, A5, Letter, Legal, ou LARGEURxHAUTEUR en
+; Parameters ....: $sFormat   - page format: A4 (default), A3, A5, Letter, Legal, or WIDTHxHEIGHT in
 ;                               millimetres.
-;                  $sOrient   - orientation : P portrait (defaut) ou L paysage.
-;                  $iMarginMm - marge par defaut, en millimetres (15 par defaut).
-; Return values .: Success      - handle du document, a transmettre a toutes les autres fonctions.
+;                  $sOrient   - orientation: P portrait (default) or L landscape.
+;                  $iMarginMm - default margin, in millimetres (15 by default).
+; Return values .: Success      - document handle, to pass to every other function.
 ; Author ........: Numeric1
 ; Modified.......:
-; Remarks .......: Le handle est un tableau autonome : plusieurs documents peuvent etre construits en parallele. Un
-;                  format inconnu retombe sur A4 portrait.
+; Remarks .......: The handle is a self-contained array: several documents can be built in parallel. An
+;                  unknown format falls back to A4 portrait.
 ; Related .......: _PDFX_AddPage, _PDFX_SetFont, _PDFX_Save, _PDFX_Close
-; Link ..........: https://www.autoitscript.com/forum/
+; Link ..........: https://www.autoitscript.com/forum/topic/213930-udf-pdfx/
 ; Example .......: Yes
 ; ===============================================================================================================================
 Func _PDFX_New($sFormat = "A4", $sOrient = "P", $iMarginMm = 15)
@@ -406,16 +401,16 @@ EndFunc   ;==>_PDFX_PaperSize
 
 ; #FUNCTION# ====================================================================================================================
 ; Name...........: _PDFX_Mm
-; Description ...: Convertit une longueur en millimetres vers l'unite interne, le point PDF.
+; Description ...: Converts a length in millimetres to the internal unit, the PDF point.
 ; Syntax.........: _PDFX_Mm($fMillimetres)
-; Parameters ....: $fMillimetres - longueur en millimetres.
-; Return values .: Success      - valeur en points (1 pt = 1/72 pouce).
+; Parameters ....: $fMillimetres - length in millimetres.
+; Return values .: Success      - value in points (1 pt = 1/72 inch).
 ; Author ........: Numeric1
 ; Modified.......:
-; Remarks .......: Le moteur travaille exclusivement en points ; cette fonction evite les conversions dispersees dans
-;                  le code appelant.
+; Remarks .......: The engine works exclusively in points; this function avoids scattered conversions in
+;                  the calling code.
 ; Related .......: _PDFX_New, _PDFX_Margin
-; Link ..........: https://www.autoitscript.com/forum/
+; Link ..........: https://www.autoitscript.com/forum/topic/213930-udf-pdfx/
 ; Example .......: Yes
 ; ===============================================================================================================================
 Func _PDFX_Mm($fMillimetres)
@@ -424,19 +419,19 @@ EndFunc   ;==>_PDFX_Mm
 
 ; #FUNCTION# ====================================================================================================================
 ; Name...........: _PDFX_AddPage
-; Description ...: Ajoute une page au document et la rend courante.
+; Description ...: Adds a page to the document and makes it current.
 ; Syntax.........: _PDFX_AddPage(ByRef $oDocument, $fWidth = 0, $fHeight = 0)
-; Parameters ....: $oDocument - handle du document.
-;                  $fWidth    - largeur en points ; 0 = largeur par defaut du document.
-;                  $fHeight   - hauteur en points ; 0 = hauteur par defaut du document.
-; Return values .: Success      - index de la nouvelle page (base 0).
-;                  Failure      - -1 et @error = 2 si le document a deja ete enregistre.
+; Parameters ....: $oDocument - document handle.
+;                  $fWidth    - width in points; 0 = default document width.
+;                  $fHeight   - height in points; 0 = default document height.
+; Return values .: Success      - index of the new page (0-based).
+;                  Failure      - -1 with @error = 2 if the document has already been saved.
 ; Author ........: Numeric1
 ; Modified.......:
-; Remarks .......: Le contenu de la page precedente est fige avant l'ajout. Un document enregistre par _PDFX_Save()
-;                  est gele : plus aucune page ne peut y etre ajoutee.
+; Remarks .......: The content of the previous page is frozen before the addition. A document saved by
+;                  _PDFX_Save() is frozen: no further page can be added to it.
 ; Related .......: _PDFX_New, _PDFX_SavePage, _PDFX_PageCount
-; Link ..........: https://www.autoitscript.com/forum/
+; Link ..........: https://www.autoitscript.com/forum/topic/213930-udf-pdfx/
 ; Example .......: Yes
 ; ===============================================================================================================================
 Func _PDFX_AddPage(ByRef $oDocument, $fWidth = 0, $fHeight = 0)
@@ -461,15 +456,15 @@ EndFunc   ;==>_PDFX_AddPage
 
 ; #FUNCTION# ====================================================================================================================
 ; Name...........: _PDFX_PageCount
-; Description ...: Renvoie le nombre de pages du document.
+; Description ...: Returns the number of pages in the document.
 ; Syntax.........: _PDFX_PageCount($oDocument)
-; Parameters ....: $oDocument - handle du document.
-; Return values .: Success      - nombre de pages (entier).
+; Parameters ....: $oDocument - document handle.
+; Return values .: Success      - number of pages (integer).
 ; Author ........: Numeric1
 ; Modified.......:
 ; Remarks .......:
 ; Related .......: _PDFX_AddPage
-; Link ..........: https://www.autoitscript.com/forum/
+; Link ..........: https://www.autoitscript.com/forum/topic/213930-udf-pdfx/
 ; Example .......: Yes
 ; ===============================================================================================================================
 Func _PDFX_PageCount($oDocument)
@@ -478,15 +473,15 @@ EndFunc   ;==>_PDFX_PageCount
 
 ; #FUNCTION# ====================================================================================================================
 ; Name...........: _PDFX_PageWidth
-; Description ...: Renvoie la largeur de la page courante.
+; Description ...: Returns the width of the current page.
 ; Syntax.........: _PDFX_PageWidth($oDocument)
-; Parameters ....: $oDocument - handle du document.
-; Return values .: Success      - largeur en points.
+; Parameters ....: $oDocument - document handle.
+; Return values .: Success      - width in points.
 ; Author ........: Numeric1
 ; Modified.......:
 ; Remarks .......:
 ; Related .......: _PDFX_PageHeight, _PDFX_Mm
-; Link ..........: https://www.autoitscript.com/forum/
+; Link ..........: https://www.autoitscript.com/forum/topic/213930-udf-pdfx/
 ; Example .......: Yes
 ; ===============================================================================================================================
 Func _PDFX_PageWidth($oDocument)
@@ -495,15 +490,15 @@ EndFunc   ;==>_PDFX_PageWidth
 
 ; #FUNCTION# ====================================================================================================================
 ; Name...........: _PDFX_PageHeight
-; Description ...: Renvoie la hauteur de la page courante.
+; Description ...: Returns the height of the current page.
 ; Syntax.........: _PDFX_PageHeight($oDocument)
-; Parameters ....: $oDocument - handle du document.
-; Return values .: Success      - hauteur en points.
+; Parameters ....: $oDocument - document handle.
+; Return values .: Success      - height in points.
 ; Author ........: Numeric1
 ; Modified.......:
 ; Remarks .......:
 ; Related .......: _PDFX_PageWidth, _PDFX_Mm
-; Link ..........: https://www.autoitscript.com/forum/
+; Link ..........: https://www.autoitscript.com/forum/topic/213930-udf-pdfx/
 ; Example .......: Yes
 ; ===============================================================================================================================
 Func _PDFX_PageHeight($oDocument)
@@ -512,15 +507,15 @@ EndFunc   ;==>_PDFX_PageHeight
 
 ; #FUNCTION# ====================================================================================================================
 ; Name...........: _PDFX_Margin
-; Description ...: Renvoie la marge par defaut du document.
+; Description ...: Returns the default margin of the document.
 ; Syntax.........: _PDFX_Margin($oDocument)
-; Parameters ....: $oDocument - handle du document.
-; Return values .: Success      - marge en points.
+; Parameters ....: $oDocument - document handle.
+; Return values .: Success      - margin in points.
 ; Author ........: Numeric1
 ; Modified.......:
 ; Remarks .......:
 ; Related .......: _PDFX_New, _PDFX_Mm
-; Link ..........: https://www.autoitscript.com/forum/
+; Link ..........: https://www.autoitscript.com/forum/topic/213930-udf-pdfx/
 ; Example .......: Yes
 ; ===============================================================================================================================
 Func _PDFX_Margin($oDocument)
@@ -529,15 +524,15 @@ EndFunc   ;==>_PDFX_Margin
 
 ; #FUNCTION# ====================================================================================================================
 ; Name...........: _PDFX_SavePage
-; Description ...: Fige le contenu de la page courante dans le document.
+; Description ...: Freezes the content of the current page into the document.
 ; Syntax.........: _PDFX_SavePage(ByRef $oDocument)
-; Parameters ....: $oDocument - handle du document.
+; Parameters ....: $oDocument - document handle.
 ; Return values .: Success      - None.
 ; Author ........: Numeric1
 ; Modified.......:
-; Remarks .......: Normalement inutile : _PDFX_AddPage() et _PDFX_Save() figent la page automatiquement.
+; Remarks .......: Normally unnecessary: _PDFX_AddPage() and _PDFX_Save() freeze the page automatically.
 ; Related .......: _PDFX_AddPage, _PDFX_Save
-; Link ..........: https://www.autoitscript.com/forum/
+; Link ..........: https://www.autoitscript.com/forum/topic/213930-udf-pdfx/
 ; Example .......: No
 ; ===============================================================================================================================
 Func _PDFX_SavePage(ByRef $oDocument)
@@ -557,10 +552,10 @@ Func _PDFX_FlushPage(ByRef $oDocument)
 	$oDocument[$__PDFX_DOC_ANNOTS] = ""
 EndFunc   ;==>_PDFX_FlushPage
 
-#EndRegion
+#EndRegion - Lifecycle and pages ---------------------------------------------------------------------------------------------------
 
-#Region - Objets indirects ------------------------------------------------------------------------------------------------------
-; Allocation des objets numerotes qui composent le fichier PDF.
+#Region - Indirect objects ------------------------------------------------------------------------------------------------------
+; Allocation of the numbered objects that make up the PDF file.
 
 Func _PDFX_AddObject(ByRef $oDocument, $vBody)
 	Local $iObjectNumber = $oDocument[$__PDFX_DOC_OBJECTCOUNT] + 1
@@ -572,26 +567,26 @@ Func _PDFX_AddObject(ByRef $oDocument, $vBody)
 	Return $iObjectNumber
 EndFunc   ;==>_PDFX_AddObject
 
-#EndRegion
+#EndRegion - Indirect objects ------------------------------------------------------------------------------------------------------
 
-#Region - Polices et metriques --------------------------------------------------------------------------------------------------
-; Selection des polices standard et calcul exact des largeurs AFM.
+#Region - Fonts and metrics -----------------------------------------------------------------------------------------------------
+; Selection of the standard fonts and exact AFM width computation.
 
 ; #FUNCTION# ====================================================================================================================
 ; Name...........: _PDFX_SetFont
-; Description ...: Selectionne la police et la taille utilisees par les fonctions de texte.
+; Description ...: Selects the font and size used by the text functions.
 ; Syntax.........: _PDFX_SetFont(ByRef $oDocument, $sFamily = "Helvetica", $iSize = 0, $sStyle = "")
-; Parameters ....: $sFamily - famille : Helvetica (defaut), Times, Courier ; alias acceptes : serif, mono, courrier,
+; Parameters ....: $sFamily - family: Helvetica (default), Times, Courier; accepted aliases: serif, mono, courrier,
 ;                             georgia.
-;                  $iSize   - taille en points ; 0 conserve la taille courante.
-;                  $sStyle  - style : B gras, I italique, BI gras italique.
+;                  $iSize   - size in points; 0 keeps the current size.
+;                  $sStyle  - style: B bold, I italic, BI bold italic.
 ; Return values .: Success      - True.
-;                  Failure      - False et @error = 1 si la police ne peut pas etre creee.
+;                  Failure      - False with @error = 1 if the font cannot be created.
 ; Author ........: Numeric1
 ; Modified.......:
-; Remarks .......: Les 14 polices standard PDF sont disponibles sans fichier de police ni embarquement.
+; Remarks .......: The 14 PDF standard fonts are available with no font file and no embedding.
 ; Related .......: _PDFX_Font, _PDFX_FontSize, _PDFX_TextWidth
-; Link ..........: https://www.autoitscript.com/forum/
+; Link ..........: https://www.autoitscript.com/forum/topic/213930-udf-pdfx/
 ; Example .......: Yes
 ; ===============================================================================================================================
 Func _PDFX_SetFont(ByRef $oDocument, $sFamily = "Helvetica", $iSize = 0, $sStyle = "")
@@ -604,15 +599,15 @@ EndFunc   ;==>_PDFX_SetFont
 
 ; #FUNCTION# ====================================================================================================================
 ; Name...........: _PDFX_Font
-; Description ...: Renvoie le nom PDF de la police courante.
+; Description ...: Returns the PDF name of the current font.
 ; Syntax.........: _PDFX_Font($oDocument)
-; Parameters ....: $oDocument - handle du document.
-; Return values .: Success      - nom de base, par exemple Helvetica-Bold.
+; Parameters ....: $oDocument - document handle.
+; Return values .: Success      - base name, for example Helvetica-Bold.
 ; Author ........: Numeric1
 ; Modified.......:
 ; Remarks .......:
 ; Related .......: _PDFX_SetFont, _PDFX_FontSize
-; Link ..........: https://www.autoitscript.com/forum/
+; Link ..........: https://www.autoitscript.com/forum/topic/213930-udf-pdfx/
 ; Example .......: Yes
 ; ===============================================================================================================================
 Func _PDFX_Font($oDocument)
@@ -622,15 +617,15 @@ EndFunc   ;==>_PDFX_Font
 
 ; #FUNCTION# ====================================================================================================================
 ; Name...........: _PDFX_FontSize
-; Description ...: Renvoie la taille de police courante.
+; Description ...: Returns the current font size.
 ; Syntax.........: _PDFX_FontSize($oDocument)
-; Parameters ....: $oDocument - handle du document.
-; Return values .: Success      - taille en points.
+; Parameters ....: $oDocument - document handle.
+; Return values .: Success      - size in points.
 ; Author ........: Numeric1
 ; Modified.......:
 ; Remarks .......:
 ; Related .......: _PDFX_SetFont, _PDFX_Font
-; Link ..........: https://www.autoitscript.com/forum/
+; Link ..........: https://www.autoitscript.com/forum/topic/213930-udf-pdfx/
 ; Example .......: Yes
 ; ===============================================================================================================================
 Func _PDFX_FontSize($oDocument)
@@ -655,7 +650,7 @@ Func _PDFX_EnsureFont(ByRef $oDocument, $sFamily, $sStyle)
 	Return $iNewIndex
 EndFunc   ;==>_PDFX_EnsureFont
 
-; [nom PDF de la police, table de largeur]
+; [PDF name of the font, width table]
 Func _PDFX_BaseFont($sFamily, $sStyle)
 	Local $sFlags = StringUpper(StringStripWS($sStyle, 8))
 	Local $bBold = StringInStr($sFlags, "B") > 0
@@ -712,18 +707,18 @@ EndFunc   ;==>_PDFX_BaseFont
 
 ; #FUNCTION# ====================================================================================================================
 ; Name...........: _PDFX_TextWidth
-; Description ...: Calcule la largeur d'un texte avec la police courante.
+; Description ...: Computes the width of a text with the current font.
 ; Syntax.........: _PDFX_TextWidth($oDocument, $sText, $iSize = 0)
-; Parameters ....: $oDocument - handle du document.
-;                  $sText     - texte a mesurer.
-;                  $iSize     - taille en points ; 0 = taille courante.
-; Return values .: Success      - largeur en points.
+; Parameters ....: $oDocument - document handle.
+;                  $sText     - text to measure.
+;                  $iSize     - size in points; 0 = current size.
+; Return values .: Success      - width in points.
 ; Author ........: Numeric1
 ; Modified.......:
-; Remarks .......: Le calcul utilise les metriques AFM : le resultat est exact pour les polices standard, sans rendu
-;                  GDI.
+; Remarks .......: The computation uses the AFM metrics: the result is exact for the standard fonts, with no GDI
+;                  rendering.
 ; Related .......: _PDFX_SetFont, _PDFX_TextAlign
-; Link ..........: https://www.autoitscript.com/forum/
+; Link ..........: https://www.autoitscript.com/forum/topic/213930-udf-pdfx/
 ; Example .......: Yes
 ; ===============================================================================================================================
 Func _PDFX_TextWidth($oDocument, $sText, $iSize = 0)
@@ -769,7 +764,7 @@ Func _PDFX_CharWidth($iTable, $iCode)
 	Return 500
 EndFunc   ;==>_PDFX_CharWidth
 
-; Index dans $PDFX_AFM_SPECIAL, ou -1.
+; Index in $PDFX_AFM_SPECIAL, or -1.
 Func _PDFX_SpecialIndex($iCode)
 	Switch $iCode
 		Case 0xC6
@@ -798,7 +793,7 @@ Func _PDFX_SpecialIndex($iCode)
 	Return -1
 EndFunc   ;==>_PDFX_SpecialIndex
 
-; Pour un caractere latin accentue, renvoie la lettre de base (pour la largeur).
+; For an accented Latin character, returns the base letter (for width).
 Func _PDFX_BaseChar($iCode)
 	Switch $iCode
 		Case 0xC0 To 0xC5, 0xE0 To 0xE5
@@ -818,7 +813,7 @@ Func _PDFX_BaseChar($iCode)
 		Case 0xDD, 0xFD, 0xFF
 			Return 121
 	EndSwitch
-	; Caracteres typographiques WinAnsi -> largeur approximative
+; WinAnsi typographic characters -> approximate width
 	Switch $iCode
 		Case 0x80
 			Return 32
@@ -836,26 +831,26 @@ Func _PDFX_BaseChar($iCode)
 	Return -1
 EndFunc   ;==>_PDFX_BaseChar
 
-#EndRegion
+#EndRegion - Fonts and metrics -----------------------------------------------------------------------------------------------------
 
-#Region - Etat graphique --------------------------------------------------------------------------------------------------------
-; Couleurs, epaisseur de trait, tirets et opacite.
+#Region - Graphic state ---------------------------------------------------------------------------------------------------------
+; Colours, line width, dashes and opacity.
 
 ; #FUNCTION# ====================================================================================================================
 ; Name...........: _PDFX_SetFill
-; Description ...: Definit la couleur de remplissage des formes et du texte.
+; Description ...: Sets the fill colour used by shapes and text.
 ; Syntax.........: _PDFX_SetFill(ByRef $oDocument, $vColor)
-; Parameters ....: $oDocument - handle du document.
-;                  $vColor    - 0xRRGGBB, tableau [rouge, vert, bleu], chaine de trois nombres separes par des
-;                               virgules, ou nom (red, navy, gris...).
+; Parameters ....: $oDocument - document handle.
+;                  $vColor    - 0xRRGGBB, [red, green, blue] array, a string of three comma-separated
+;                               numbers, or a name (red, navy, gray...).
 ; Return values .: Success      - True.
-;                  Failure      - True et @error = 1 si une composante a ete ramenee dans l'intervalle [0, 255].
+;                  Failure      - True with @error = 1 if a component was clamped into [0, 255].
 ; Author ........: Numeric1
 ; Modified.......:
-; Remarks .......: La couleur reste active jusqu'au prochain appel ; chaque primitive capture la couleur au moment de
-;                  son emission.
+; Remarks .......: The colour stays active until the next call; every primitive captures the colour when
+;                  it is emitted.
 ; Related .......: _PDFX_SetStroke, _PDFX_Rect, _PDFX_Text
-; Link ..........: https://www.autoitscript.com/forum/
+; Link ..........: https://www.autoitscript.com/forum/topic/213930-udf-pdfx/
 ; Example .......: Yes
 ; ===============================================================================================================================
 Func _PDFX_SetFill(ByRef $oDocument, $vColor)
@@ -865,17 +860,17 @@ EndFunc   ;==>_PDFX_SetFill
 
 ; #FUNCTION# ====================================================================================================================
 ; Name...........: _PDFX_SetStroke
-; Description ...: Definit la couleur du trait des formes.
+; Description ...: Sets the stroke colour used by shapes.
 ; Syntax.........: _PDFX_SetStroke(ByRef $oDocument, $vColor)
-; Parameters ....: $oDocument - handle du document.
-;                  $vColor    - meme syntaxe que _PDFX_SetFill().
+; Parameters ....: $oDocument - document handle.
+;                  $vColor    - same syntax as _PDFX_SetFill().
 ; Return values .: Success      - True.
-;                  Failure      - True et @error = 1 si une composante a ete ramenee dans l'intervalle [0, 255].
+;                  Failure      - True with @error = 1 if a component was clamped into [0, 255].
 ; Author ........: Numeric1
 ; Modified.......:
 ; Remarks .......:
 ; Related .......: _PDFX_SetFill, _PDFX_SetLineWidth, _PDFX_Line
-; Link ..........: https://www.autoitscript.com/forum/
+; Link ..........: https://www.autoitscript.com/forum/topic/213930-udf-pdfx/
 ; Example .......: Yes
 ; ===============================================================================================================================
 Func _PDFX_SetStroke(ByRef $oDocument, $vColor)
@@ -885,16 +880,16 @@ EndFunc   ;==>_PDFX_SetStroke
 
 ; #FUNCTION# ====================================================================================================================
 ; Name...........: _PDFX_SetLineWidth
-; Description ...: Definit l'epaisseur du trait.
+; Description ...: Sets the stroke width.
 ; Syntax.........: _PDFX_SetLineWidth(ByRef $oDocument, $fWidth)
-; Parameters ....: $oDocument - handle du document.
-;                  $fWidth    - epaisseur en points ; une valeur inferieure ou egale a 0 est ramenee a 0.1.
+; Parameters ....: $oDocument - document handle.
+;                  $fWidth    - width in points; a value less than or equal to 0 is clamped to 0.1.
 ; Return values .: Success      - True.
 ; Author ........: Numeric1
 ; Modified.......:
 ; Remarks .......:
 ; Related .......: _PDFX_SetStroke, _PDFX_SetDash
-; Link ..........: https://www.autoitscript.com/forum/
+; Link ..........: https://www.autoitscript.com/forum/topic/213930-udf-pdfx/
 ; Example .......: Yes
 ; ===============================================================================================================================
 Func _PDFX_SetLineWidth(ByRef $oDocument, $fWidth)
@@ -905,18 +900,18 @@ EndFunc   ;==>_PDFX_SetLineWidth
 
 ; #FUNCTION# ====================================================================================================================
 ; Name...........: _PDFX_SetDash
-; Description ...: Definit un motif de tirets pour les traits suivants.
+; Description ...: Sets a dash pattern for the following strokes.
 ; Syntax.........: _PDFX_SetDash(ByRef $oDocument, $fOn, $fOff = 0)
-; Parameters ....: $oDocument - handle du document.
-;                  $fOn       - longueur du trait, en points ; 0 ou moins retablit un trait plein.
-;                  $fOff      - longueur de l'espace, en points ; 0 = meme valeur que le trait.
+; Parameters ....: $oDocument - document handle.
+;                  $fOn       - length of the dash, in points; 0 or less restores a solid line.
+;                  $fOff      - length of the gap, in points; 0 = same value as the dash.
 ; Return values .: Success      - True.
 ; Author ........: Numeric1
 ; Modified.......:
-; Remarks .......: Le motif s'applique a tous les traits suivants, y compris les bordures de tableaux, jusqu'au
-;                  prochain changement. _PDFX_SetDash($oDocument, 0) emet le motif vide [] et revient au trait continu.
+; Remarks .......: The pattern applies to all following strokes, including table borders, until the
+;                  next change. _PDFX_SetDash($oDocument, 0) emits the empty pattern [] and restores a solid line.
 ; Related .......: _PDFX_SetLineWidth, _PDFX_Line
-; Link ..........: https://www.autoitscript.com/forum/
+; Link ..........: https://www.autoitscript.com/forum/topic/213930-udf-pdfx/
 ; Example .......: Yes
 ; ===============================================================================================================================
 Func _PDFX_SetDash(ByRef $oDocument, $fOn, $fOff = 0)
@@ -931,19 +926,19 @@ EndFunc   ;==>_PDFX_SetDash
 
 ; #FUNCTION# ====================================================================================================================
 ; Name...........: _PDFX_SetAlpha
-; Description ...: Definit l'opacite des remplissages et des traits.
+; Description ...: Sets the opacity of fills and strokes.
 ; Syntax.........: _PDFX_SetAlpha(ByRef $oDocument, $fAlpha, $fStroke = -1)
-; Parameters ....: $oDocument - handle du document.
-;                  $fAlpha    - opacite de remplissage, de 0 (transparent) a 1 (opaque).
-;                  $fStroke   - opacite du trait ; valeur negative = identique au remplissage.
+; Parameters ....: $oDocument - document handle.
+;                  $fAlpha    - fill opacity, from 0 (transparent) to 1 (opaque).
+;                  $fStroke   - stroke opacity; a negative value = same as the fill.
 ; Return values .: Success      - True.
-;                  Failure      - True et @error = 1 si une opacite a ete ramenee dans l'intervalle [0, 1].
+;                  Failure      - True with @error = 1 if an opacity was clamped into [0, 1].
 ; Author ........: Numeric1
 ; Modified.......:
-; Remarks .......: Implemente par un ExtGState /ca /CA, cree une seule fois par couple de valeurs puis reutilise.
-;                  Les valeurs negatives sont ramenees a 0, celles superieures a 1 a 1.
+; Remarks .......: Implemented with an ExtGState /ca /CA, created once per pair of values then reused.
+;                  Negative values are clamped to 0, values above 1 to 1.
 ; Related .......: _PDFX_SetFill, _PDFX_SetStroke
-; Link ..........: https://www.autoitscript.com/forum/
+; Link ..........: https://www.autoitscript.com/forum/topic/213930-udf-pdfx/
 ; Example .......: Yes
 ; ===============================================================================================================================
 Func _PDFX_SetAlpha(ByRef $oDocument, $fAlpha, $fStroke = -1)
@@ -1013,7 +1008,7 @@ Func _PDFX_Color($vColor)
 		$iGreen = BitAND(BitShift($iColor, 8), 0xFF)
 		$iBlue = BitAND($iColor, 0xFF)
 	EndIf
-	; Return _PDFX_ColorStr() perdrait @error : on l'intercepte avant de le propager.
+; Return _PDFX_ColorStr() would lose @error: it is intercepted before being propagated.
 	Local $sRgb = _PDFX_ColorStr($iRed, $iGreen, $iBlue)
 	Return SetError(@error, 0, $sRgb)
 EndFunc   ;==>_PDFX_Color
@@ -1031,21 +1026,21 @@ EndFunc   ;==>_PDFX_ColorStr
 
 Func _PDFX_ColorName($sColorName)
 	Switch StringLower($sColorName)
-		Case "black", "noir"
+		Case "black"
 			Return 0x000000
-		Case "white", "blanc"
+		Case "white"
 			Return 0xFFFFFF
-		Case "red", "rouge"
+		Case "red"
 			Return 0xFF0000
-		Case "green", "vert"
+		Case "green"
 			Return 0x008000
-		Case "blue", "bleu"
+		Case "blue"
 			Return 0x0000FF
-		Case "gray", "grey", "gris"
+		Case "gray", "grey"
 			Return 0x808080
 		Case "lightgray", "lightgrey"
 			Return 0xD3D3D3
-		Case "navy", "marine"
+		Case "navy"
 			Return 0x000080
 		Case "teal"
 			Return 0x008080
@@ -1053,11 +1048,11 @@ Func _PDFX_ColorName($sColorName)
 			Return 0xFFA500
 		Case "purple", "violet"
 			Return 0x800080
-		Case "yellow", "jaune"
+		Case "yellow"
 			Return 0xFFFF00
 		Case "silver"
 			Return 0xC0C0C0
-		Case "maroon", "bordeaux"
+		Case "maroon"
 			Return 0x800000
 		Case "olive"
 			Return 0x808000
@@ -1071,26 +1066,26 @@ Func _PDFX_ColorName($sColorName)
 	Return -1
 EndFunc   ;==>_PDFX_ColorName
 
-#EndRegion
+#EndRegion - Graphic state ---------------------------------------------------------------------------------------------------------
 
-#Region - Texte et encodage -----------------------------------------------------------------------------------------------------
-; Emission du texte, alignement, retour a la ligne et conversion WinAnsi.
+#Region - Text and encoding -----------------------------------------------------------------------------------------------------
+; Text emission, alignment, word wrapping and WinAnsi conversion.
 
 ; #FUNCTION# ====================================================================================================================
 ; Name...........: _PDFX_Text
-; Description ...: Ecrit une ligne de texte.
+; Description ...: Writes a line of text.
 ; Syntax.........: _PDFX_Text(ByRef $oDocument, $fX, $fY, $sText, $iSize = 0)
-; Parameters ....: $oDocument - handle du document.
-;                  $fX        - abscisse du debut du texte, en points.
-;                  $fY        - ordonnee du HAUT du texte, et non de la ligne de base.
-;                  $sText     - texte a ecrire.
-;                  $iSize     - taille en points ; 0 = taille courante.
-; Return values .: Success      - ordonnee du haut de la ligne suivante (interligne 1.2).
+; Parameters ....: $oDocument - document handle.
+;                  $fX        - x coordinate of the start of the text, in points.
+;                  $fY        - y coordinate of the TOP of the text, not of the baseline.
+;                  $sText     - text to write.
+;                  $iSize     - size in points; 0 = current size.
+; Return values .: Success      - y coordinate of the top of the next line (1.2 line spacing).
 ; Author ........: Numeric1
 ; Modified.......:
-; Remarks .......: Le texte est encode en WinAnsi ; les caracteres non representables deviennent '?'.
+; Remarks .......: The text is encoded in WinAnsi; unrepresentable characters become '?'.
 ; Related .......: _PDFX_TextAlign, _PDFX_TextWrap, _PDFX_SetFont
-; Link ..........: https://www.autoitscript.com/forum/
+; Link ..........: https://www.autoitscript.com/forum/topic/213930-udf-pdfx/
 ; Example .......: Yes
 ; ===============================================================================================================================
 Func _PDFX_Text(ByRef $oDocument, $fX, $fY, $sText, $iSize = 0)
@@ -1100,21 +1095,21 @@ EndFunc   ;==>_PDFX_Text
 
 ; #FUNCTION# ====================================================================================================================
 ; Name...........: _PDFX_TextAlign
-; Description ...: Ecrit une ligne de texte alignee dans une boite horizontale.
+; Description ...: Writes a line of text aligned inside a horizontal box.
 ; Syntax.........: _PDFX_TextAlign(ByRef $oDocument, $fX, $fY, $fWidth, $sText, $sAlign = "L", $iSize = 0)
-; Parameters ....: $oDocument - handle du document.
-;                  $fX        - bord gauche de la boite d'alignement.
-;                  $fY        - ordonnee du haut du texte.
-;                  $fWidth    - largeur de la boite d'alignement, en points.
-;                  $sText     - texte a ecrire.
-;                  $sAlign    - L gauche (defaut), C centre, R droite.
-;                  $iSize     - taille en points ; 0 = taille courante.
-; Return values .: Success      - ordonnee du haut de la ligne suivante (interligne 1.2).
+; Parameters ....: $oDocument - document handle.
+;                  $fX        - left edge of the alignment box.
+;                  $fY        - y coordinate of the top of the text.
+;                  $fWidth    - width of the alignment box, in points.
+;                  $sText     - text to write.
+;                  $sAlign    - L left (default), C centre, R right.
+;                  $iSize     - size in points; 0 = current size.
+; Return values .: Success      - y coordinate of the top of the next line (1.2 line spacing).
 ; Author ........: Numeric1
 ; Modified.......:
-; Remarks .......: Pour C et R, la largeur reelle du texte est mesuree avec les metriques AFM avant placement.
+; Remarks .......: For C and R, the real text width is measured from the AFM metrics before placement.
 ; Related .......: _PDFX_Text, _PDFX_TextWidth
-; Link ..........: https://www.autoitscript.com/forum/
+; Link ..........: https://www.autoitscript.com/forum/topic/213930-udf-pdfx/
 ; Example .......: Yes
 ; ===============================================================================================================================
 Func _PDFX_TextAlign(ByRef $oDocument, $fX, $fY, $fWidth, $sText, $sAlign = "L", $iSize = 0)
@@ -1124,24 +1119,24 @@ EndFunc   ;==>_PDFX_TextAlign
 
 ; #FUNCTION# ====================================================================================================================
 ; Name...........: _PDFX_TextWrap
-; Description ...: Ecrit un texte sur plusieurs lignes, avec retour a la ligne automatique.
+; Description ...: Writes text over several lines, with automatic word wrapping.
 ; Syntax.........: _PDFX_TextWrap(ByRef $oDocument, $fX, $fY, $fWidth, $sText, $iSize = 0, $fLeading = 0, $sAlign = "L", $bPageBreak = False)
-; Parameters ....: $oDocument  - handle du document.
-;                  $fX         - bord gauche de la colonne.
-;                  $fY         - ordonnee du haut de la premiere ligne.
-;                  $fWidth     - largeur utile de la colonne, en points.
-;                  $sText      - texte a ecrire ; les retours chariot sont respectes.
-;                  $iSize      - taille en points ; 0 = taille courante.
-;                  $fLeading   - interligne en points ; 0 = 1.2 fois la taille.
-;                  $sAlign     - L gauche (defaut), C centre, R droite.
-;                  $bPageBreak - True : ajoute une page des que la marge basse est atteinte.
-; Return values .: Success      - ordonnee du haut de la premiere ligne libre.
+; Parameters ....: $oDocument  - document handle.
+;                  $fX         - left edge of the column.
+;                  $fY         - y coordinate of the top of the first line.
+;                  $fWidth     - usable width of the column, in points.
+;                  $sText      - text to write; carriage returns are honoured.
+;                  $iSize      - size in points; 0 = current size.
+;                  $fLeading   - line spacing in points; 0 = 1.2 times the size.
+;                  $sAlign     - L left (default), C centre, R right.
+;                  $bPageBreak - True: adds a page as soon as the bottom margin is reached.
+; Return values .: Success      - y coordinate of the top of the first free line.
 ; Author ........: Numeric1
 ; Modified.......:
-; Remarks .......: Les mots plus larges que la colonne sont coupes caractere par caractere ; les paragraphes vides
-;                  sont conserves.
+; Remarks .......: Words wider than the column are split character by character; empty paragraphs
+;                  are preserved.
 ; Related .......: _PDFX_Text, _PDFX_TextAlign, _PDFX_Wrap
-; Link ..........: https://www.autoitscript.com/forum/
+; Link ..........: https://www.autoitscript.com/forum/topic/213930-udf-pdfx/
 ; Example .......: Yes
 ; ===============================================================================================================================
 Func _PDFX_TextWrap(ByRef $oDocument, $fX, $fY, $fWidth, $sText, $iSize = 0, $fLeading = 0, $sAlign = "L", $bPageBreak = False)
@@ -1160,7 +1155,7 @@ Func _PDFX_TextWrap(ByRef $oDocument, $fX, $fY, $fWidth, $sText, $iSize = 0, $fL
 	Return $fY
 EndFunc   ;==>_PDFX_TextWrap
 
-; Decoupe un texte en lignes tenant dans $fWidth (respecte les retours chariot).
+; Splits text into lines that fit inside $fWidth (honours carriage returns).
 Func _PDFX_Wrap($oDocument, $sText, $fWidth, $iSize = 0)
 	Local $fFontSize = $iSize > 0 ? $iSize : $oDocument[$__PDFX_DOC_FONTSIZE]
 	Local $aLines[0]
@@ -1182,7 +1177,7 @@ Func _PDFX_Wrap($oDocument, $sText, $fWidth, $iSize = 0)
 			Local $sWord = $aWords[$iWord]
 			If $sWord = "" Then ContinueLoop
 
-			; Mot plus large que la colonne : on le coupe caractere par caractere.
+; Word wider than the column: split it character by character.
 			If _PDFX_Measure($oDocument, $sWord, $fFontSize) > $fWidth Then
 				If $sLine <> "" Then
 					_PDFX_ArrayPush($aLines, $sLine)
@@ -1244,7 +1239,7 @@ Func _PDFX_EmitText(ByRef $oDocument, $fX, $fY, $sText, $iSize, $sAlign = "L", $
 	_PDFX_Op($oDocument, $sStream)
 EndFunc   ;==>_PDFX_EmitText
 
-; Chaine PDF : echappe ( ) \ et encode en WinAnsi (octal pour > 126).
+; PDF string: escape ( ) \ and encode in WinAnsi (octal above 126).
 Func _PDFX_Escape($sText)
 	Local $iLength = StringLen($sText)
 	If $iLength = 0 Then Return ""
@@ -1263,12 +1258,12 @@ Func _PDFX_Escape($sText)
 	Return $sEscaped
 EndFunc   ;==>_PDFX_Escape
 
-; Octet en notation octale sur 3 chiffres (AutoIt n'a pas de Oct()).
+; Byte in 3-digit octal notation (AutoIt has no Oct()).
 Func _PDFX_Oct3($iByte)
 	Return Chr(48 + Int($iByte / 64)) & Chr(48 + Int(Mod($iByte, 64) / 8)) & Chr(48 + Mod($iByte, 8))
 EndFunc   ;==>_PDFX_Oct3
 
-; Point de code Unicode -> octet WinAnsi.
+; Unicode code point -> WinAnsi byte.
 Func _PDFX_WinAnsi($iCode)
 	If ($iCode >= 32 And $iCode <= 126) Or ($iCode >= 160 And $iCode <= 255) Then Return $iCode
 	Switch $iCode
@@ -1332,26 +1327,26 @@ Func _PDFX_WinAnsi($iCode)
 	Return 63 ; '?'
 EndFunc   ;==>_PDFX_WinAnsi
 
-#EndRegion
+#EndRegion - Text and encoding -----------------------------------------------------------------------------------------------------
 
-#Region - Formes vectorielles ---------------------------------------------------------------------------------------------------
-; Segments, rectangles, ellipses, polygones et courbes de Bezier.
+#Region - Vector shapes ---------------------------------------------------------------------------------------------------------
+; Lines, rectangles, ellipses, polygons and Bezier curves.
 
 ; #FUNCTION# ====================================================================================================================
 ; Name...........: _PDFX_Line
-; Description ...: Trace un segment de droite.
+; Description ...: Draws a straight line segment.
 ; Syntax.........: _PDFX_Line(ByRef $oDocument, $fX1, $fY1, $fX2, $fY2)
-; Parameters ....: $oDocument - handle du document.
-;                  $fX1       - abscisse du point de depart.
-;                  $fY1       - ordonnee du point de depart.
-;                  $fX2       - abscisse du point d'arrivee.
-;                  $fY2       - ordonnee du point d'arrivee.
+; Parameters ....: $oDocument - document handle.
+;                  $fX1       - x coordinate of the start point.
+;                  $fY1       - y coordinate of the start point.
+;                  $fX2       - x coordinate of the end point.
+;                  $fY2       - y coordinate of the end point.
 ; Return values .: Success      - True.
 ; Author ........: Numeric1
 ; Modified.......:
-; Remarks .......: Utilise la couleur de trait et l'epaisseur courantes.
+; Remarks .......: Uses the current stroke colour and line width.
 ; Related .......: _PDFX_SetStroke, _PDFX_SetLineWidth, _PDFX_SetDash
-; Link ..........: https://www.autoitscript.com/forum/
+; Link ..........: https://www.autoitscript.com/forum/topic/213930-udf-pdfx/
 ; Example .......: Yes
 ; ===============================================================================================================================
 Func _PDFX_Line(ByRef $oDocument, $fX1, $fY1, $fX2, $fY2)
@@ -1362,20 +1357,20 @@ EndFunc   ;==>_PDFX_Line
 
 ; #FUNCTION# ====================================================================================================================
 ; Name...........: _PDFX_Rect
-; Description ...: Trace un rectangle.
+; Description ...: Draws a rectangle.
 ; Syntax.........: _PDFX_Rect(ByRef $oDocument, $fX, $fY, $fWidth, $fHeight, $iStyle = $PDFX_STROKE)
-; Parameters ....: $oDocument - handle du document.
-;                  $fX        - abscisse du coin superieur gauche.
-;                  $fY        - ordonnee du coin superieur gauche.
-;                  $fWidth    - largeur, en points.
-;                  $fHeight   - hauteur, en points.
-;                  $iStyle    - $PDFX_STROKE (defaut), $PDFX_FILL ou $PDFX_BOTH.
+; Parameters ....: $oDocument - document handle.
+;                  $fX        - x coordinate of the top-left corner.
+;                  $fY        - y coordinate of the top-left corner.
+;                  $fWidth    - width, in points.
+;                  $fHeight   - height, in points.
+;                  $iStyle    - $PDFX_STROKE (default), $PDFX_FILL or $PDFX_BOTH.
 ; Return values .: Success      - True.
 ; Author ........: Numeric1
 ; Modified.......:
 ; Remarks .......:
 ; Related .......: _PDFX_Fill, _PDFX_RoundRect, _PDFX_SetFill, _PDFX_SetStroke
-; Link ..........: https://www.autoitscript.com/forum/
+; Link ..........: https://www.autoitscript.com/forum/topic/213930-udf-pdfx/
 ; Example .......: Yes
 ; ===============================================================================================================================
 Func _PDFX_Rect(ByRef $oDocument, $fX, $fY, $fWidth, $fHeight, $iStyle = $PDFX_STROKE)
@@ -1387,21 +1382,21 @@ EndFunc   ;==>_PDFX_Rect
 
 ; #FUNCTION# ====================================================================================================================
 ; Name...........: _PDFX_RoundRect
-; Description ...: Trace un rectangle a coins arrondis.
+; Description ...: Draws a rectangle with rounded corners.
 ; Syntax.........: _PDFX_RoundRect(ByRef $oDocument, $fX, $fY, $fWidth, $fHeight, $fRadius, $iStyle = $PDFX_STROKE)
-; Parameters ....: $oDocument - handle du document.
-;                  $fX        - abscisse du coin superieur gauche.
-;                  $fY        - ordonnee du coin superieur gauche.
-;                  $fWidth    - largeur, en points.
-;                  $fHeight   - hauteur, en points.
-;                  $fRadius   - rayon des coins ; borne a la moitie du plus petit cote.
-;                  $iStyle    - $PDFX_STROKE (defaut), $PDFX_FILL ou $PDFX_BOTH.
+; Parameters ....: $oDocument - document handle.
+;                  $fX        - x coordinate of the top-left corner.
+;                  $fY        - y coordinate of the top-left corner.
+;                  $fWidth    - width, in points.
+;                  $fHeight   - height, in points.
+;                  $fRadius   - corner radius; clamped to half of the shortest side.
+;                  $iStyle    - $PDFX_STROKE (default), $PDFX_FILL or $PDFX_BOTH.
 ; Return values .: Success      - True.
 ; Author ........: Numeric1
 ; Modified.......:
-; Remarks .......: Un rayon nul ou negatif produit un rectangle ordinaire.
+; Remarks .......: A zero or negative radius produces an ordinary rectangle.
 ; Related .......: _PDFX_Rect, _PDFX_Circle
-; Link ..........: https://www.autoitscript.com/forum/
+; Link ..........: https://www.autoitscript.com/forum/topic/213930-udf-pdfx/
 ; Example .......: Yes
 ; ===============================================================================================================================
 Func _PDFX_RoundRect(ByRef $oDocument, $fX, $fY, $fWidth, $fHeight, $fRadius, $iStyle = $PDFX_STROKE)
@@ -1430,20 +1425,20 @@ EndFunc   ;==>_PDFX_RoundRect
 
 ; #FUNCTION# ====================================================================================================================
 ; Name...........: _PDFX_Ellipse
-; Description ...: Trace une ellipse definie par son centre et ses deux rayons.
+; Description ...: Draws an ellipse defined by its centre and two radii.
 ; Syntax.........: _PDFX_Ellipse(ByRef $oDocument, $fCenterX, $fCenterY, $fRadiusX, $fRadiusY, $iStyle = $PDFX_STROKE)
-; Parameters ....: $oDocument - handle du document.
-;                  $fCenterX  - abscisse du centre.
-;                  $fCenterY  - ordonnee du centre.
-;                  $fRadiusX  - rayon horizontal, en points.
-;                  $fRadiusY  - rayon vertical, en points.
-;                  $iStyle    - $PDFX_STROKE (defaut), $PDFX_FILL ou $PDFX_BOTH.
+; Parameters ....: $oDocument - document handle.
+;                  $fCenterX  - x coordinate of the centre.
+;                  $fCenterY  - y coordinate of the centre.
+;                  $fRadiusX  - horizontal radius, in points.
+;                  $fRadiusY  - vertical radius, in points.
+;                  $iStyle    - $PDFX_STROKE (default), $PDFX_FILL or $PDFX_BOTH.
 ; Return values .: Success      - True.
 ; Author ........: Numeric1
 ; Modified.......:
-; Remarks .......: Quatre courbes de Bezier cubiques, avec la constante kappa 0.5523.
+; Remarks .......: Four cubic Bezier curves, using the kappa constant 0.5523.
 ; Related .......: _PDFX_Circle, _PDFX_Bezier
-; Link ..........: https://www.autoitscript.com/forum/
+; Link ..........: https://www.autoitscript.com/forum/topic/213930-udf-pdfx/
 ; Example .......: Yes
 ; ===============================================================================================================================
 Func _PDFX_Ellipse(ByRef $oDocument, $fCenterX, $fCenterY, $fRadiusX, $fRadiusY, $iStyle = $PDFX_STROKE)
@@ -1463,19 +1458,19 @@ EndFunc   ;==>_PDFX_Ellipse
 
 ; #FUNCTION# ====================================================================================================================
 ; Name...........: _PDFX_Circle
-; Description ...: Trace un cercle.
+; Description ...: Draws a circle.
 ; Syntax.........: _PDFX_Circle(ByRef $oDocument, $fCenterX, $fCenterY, $fRadius, $iStyle = $PDFX_STROKE)
-; Parameters ....: $oDocument - handle du document.
-;                  $fCenterX  - abscisse du centre.
-;                  $fCenterY  - ordonnee du centre.
-;                  $fRadius   - rayon, en points.
-;                  $iStyle    - $PDFX_STROKE (defaut), $PDFX_FILL ou $PDFX_BOTH.
+; Parameters ....: $oDocument - document handle.
+;                  $fCenterX  - x coordinate of the centre.
+;                  $fCenterY  - y coordinate of the centre.
+;                  $fRadius   - radius, in points.
+;                  $iStyle    - $PDFX_STROKE (default), $PDFX_FILL or $PDFX_BOTH.
 ; Return values .: Success      - True.
 ; Author ........: Numeric1
 ; Modified.......:
 ; Remarks .......:
 ; Related .......: _PDFX_Ellipse
-; Link ..........: https://www.autoitscript.com/forum/
+; Link ..........: https://www.autoitscript.com/forum/topic/213930-udf-pdfx/
 ; Example .......: Yes
 ; ===============================================================================================================================
 Func _PDFX_Circle(ByRef $oDocument, $fCenterX, $fCenterY, $fRadius, $iStyle = $PDFX_STROKE)
@@ -1484,19 +1479,19 @@ EndFunc   ;==>_PDFX_Circle
 
 ; #FUNCTION# ====================================================================================================================
 ; Name...........: _PDFX_Polyline
-; Description ...: Trace une ligne brisee ou un polygone.
+; Description ...: Draws a polyline or a polygon.
 ; Syntax.........: _PDFX_Polyline(ByRef $oDocument, $aPoints, $bClose = False, $iStyle = $PDFX_STROKE)
-; Parameters ....: $oDocument - handle du document.
-;                  $aPoints   - tableau [n][2] de sommets : $aPoints[i][0] = x, $aPoints[i][1] = y.
-;                  $bClose    - True ferme le trace (polygone).
-;                  $iStyle    - $PDFX_STROKE (defaut), $PDFX_FILL ou $PDFX_BOTH.
+; Parameters ....: $oDocument - document handle.
+;                  $aPoints   - [n][2] array of vertices: $aPoints[i][0] = x, $aPoints[i][1] = y.
+;                  $bClose    - True closes the path (polygon).
+;                  $iStyle    - $PDFX_STROKE (default), $PDFX_FILL or $PDFX_BOTH.
 ; Return values .: Success      - True.
-;                  Failure      - False si le tableau contient moins de deux sommets.
+;                  Failure      - False if the array holds fewer than two vertices.
 ; Author ........: Numeric1
 ; Modified.......:
 ; Remarks .......:
 ; Related .......: _PDFX_Line, _PDFX_Bezier
-; Link ..........: https://www.autoitscript.com/forum/
+; Link ..........: https://www.autoitscript.com/forum/topic/213930-udf-pdfx/
 ; Example .......: Yes
 ; ===============================================================================================================================
 Func _PDFX_Polyline(ByRef $oDocument, $aPoints, $bClose = False, $iStyle = $PDFX_STROKE)
@@ -1515,24 +1510,24 @@ EndFunc   ;==>_PDFX_Polyline
 
 ; #FUNCTION# ====================================================================================================================
 ; Name...........: _PDFX_Bezier
-; Description ...: Trace une courbe de Bezier cubique.
+; Description ...: Draws a cubic Bezier curve.
 ; Syntax.........: _PDFX_Bezier(ByRef $oDocument, $fX1, $fY1, $fControl1X, $fControl1Y, $fControl2X, $fControl2Y, $fX2, $fY2, $iStyle = $PDFX_STROKE)
-; Parameters ....: $oDocument  - handle du document.
-;                  $fX1        - abscisse du point de depart.
-;                  $fY1        - ordonnee du point de depart.
-;                  $fControl1X - abscisse du premier point de controle.
-;                  $fControl1Y - ordonnee du premier point de controle.
-;                  $fControl2X - abscisse du second point de controle.
-;                  $fControl2Y - ordonnee du second point de controle.
-;                  $fX2        - abscisse du point d'arrivee.
-;                  $fY2        - ordonnee du point d'arrivee.
-;                  $iStyle     - $PDFX_STROKE (defaut), $PDFX_FILL ou $PDFX_BOTH.
+; Parameters ....: $oDocument  - document handle.
+;                  $fX1        - x coordinate of the start point.
+;                  $fY1        - y coordinate of the start point.
+;                  $fControl1X - x coordinate of the first control point.
+;                  $fControl1Y - y coordinate of the first control point.
+;                  $fControl2X - x coordinate of the second control point.
+;                  $fControl2Y - y coordinate of the second control point.
+;                  $fX2        - x coordinate of the end point.
+;                  $fY2        - y coordinate of the end point.
+;                  $iStyle     - $PDFX_STROKE (default), $PDFX_FILL or $PDFX_BOTH.
 ; Return values .: Success      - True.
 ; Author ........: Numeric1
 ; Modified.......:
 ; Remarks .......:
 ; Related .......: _PDFX_Polyline, _PDFX_Ellipse
-; Link ..........: https://www.autoitscript.com/forum/
+; Link ..........: https://www.autoitscript.com/forum/topic/213930-udf-pdfx/
 ; Example .......: Yes
 ; ===============================================================================================================================
 Func _PDFX_Bezier(ByRef $oDocument, $fX1, $fY1, $fControl1X, $fControl1Y, $fControl2X, $fControl2Y, $fX2, $fY2, $iStyle = $PDFX_STROKE)
@@ -1546,11 +1541,11 @@ EndFunc   ;==>_PDFX_Bezier
 
 Func _PDFX_CurveTo($oDocument, $fControl1X, $fControl1Y, $fControl2X, $fControl2Y, $fX, $fY)
 	Return _PDFX_F($fControl1X) & " " & _PDFX_F(_PDFX_Y($oDocument, $fControl1Y)) & " " & _
-		   _PDFX_F($fControl2X) & " " & _PDFX_F(_PDFX_Y($oDocument, $fControl2Y)) & " " & _
-		   _PDFX_F($fX) & " " & _PDFX_F(_PDFX_Y($oDocument, $fY)) & " c" & @LF
+			_PDFX_F($fControl2X) & " " & _PDFX_F(_PDFX_Y($oDocument, $fControl2Y)) & " " & _
+			_PDFX_F($fX) & " " & _PDFX_F(_PDFX_Y($oDocument, $fY)) & " c" & @LF
 EndFunc   ;==>_PDFX_CurveTo
 
-; Couleur + epaisseur de trait.
+; Stroke colour + line width.
 Func _PDFX_StrokeState($oDocument)
 	Return $oDocument[$__PDFX_DOC_STROKE] & " RG" & @LF & _PDFX_F($oDocument[$__PDFX_DOC_LINEWIDTH]) & " w" & @LF
 EndFunc   ;==>_PDFX_StrokeState
@@ -1573,34 +1568,34 @@ Func _PDFX_PaintOp($iStyle)
 	EndSwitch
 EndFunc   ;==>_PDFX_PaintOp
 
-; Coordonnee y (haut -> bas) vers l'espace PDF (bas -> haut).
+; y coordinate (top -> bottom) to PDF space (bottom -> top).
 Func _PDFX_Y($oDocument, $fY)
 	Return $oDocument[$__PDFX_DOC_HEIGHT] - $fY
 EndFunc   ;==>_PDFX_Y
 
-#EndRegion
+#EndRegion - Vector shapes ---------------------------------------------------------------------------------------------------------
 
 #Region - Images ----------------------------------------------------------------------------------------------------------------
-; Insertion, mise a l'echelle et conversion des images.
+; Insertion, scaling and conversion of images.
 
 ; #FUNCTION# ====================================================================================================================
 ; Name...........: _PDFX_Image
-; Description ...: Insere une image JPEG, PNG, BMP ou GIF.
+; Description ...: Inserts a JPEG, PNG, BMP or GIF image.
 ; Syntax.........: _PDFX_Image(ByRef $oDocument, $sPath, $fX, $fY, $fWidth = 0, $fHeight = 0)
-; Parameters ....: $oDocument - handle du document.
-;                  $sPath     - chemin du fichier image.
-;                  $fX        - abscisse du coin superieur gauche.
-;                  $fY        - ordonnee du coin superieur gauche.
-;                  $fWidth    - largeur en points ; 0 = taille naturelle a 96 dpi.
-;                  $fHeight   - hauteur en points ; 0 = proportions conservees.
+; Parameters ....: $oDocument - document handle.
+;                  $sPath     - path of the image file.
+;                  $fX        - x coordinate of the top-left corner.
+;                  $fY        - y coordinate of the top-left corner.
+;                  $fWidth    - width in points; 0 = natural size at 96 dpi.
+;                  $fHeight   - height in points; 0 = proportions preserved.
 ; Return values .: Success      - True.
-;                  Failure      - False et @error = 1 si le fichier est absent, 2 si l'image ne peut pas etre lue.
+;                  Failure      - False with @error = 1 if the file is missing, 2 if the image cannot be read.
 ; Author ........: Numeric1
 ; Modified.......:
-; Remarks .......: Les JPEG sont embarques octet pour octet, sans recompression. Les autres formats passent par GDI+
-;                  et sont aplatis sur blanc. Une image deja utilisee n'est stockee qu'une fois par document.
+; Remarks .......: JPEG files are embedded byte for byte, without recompression. Other formats go through GDI+
+;                  and are flattened onto white. An image already used is stored only once per document.
 ; Related .......: _PDFX_ImageFit, _PDFX_ImageInfo
-; Link ..........: https://www.autoitscript.com/forum/
+; Link ..........: https://www.autoitscript.com/forum/topic/213930-udf-pdfx/
 ; Example .......: Yes
 ; ===============================================================================================================================
 Func _PDFX_Image(ByRef $oDocument, $sPath, $fX, $fY, $fWidth = 0, $fHeight = 0)
@@ -1630,22 +1625,22 @@ EndFunc   ;==>_PDFX_Image
 
 ; #FUNCTION# ====================================================================================================================
 ; Name...........: _PDFX_ImageFit
-; Description ...: Insere une image reduite pour tenir entierement dans une boite, proportions conservees.
+; Description ...: Inserts an image scaled down to fit entirely inside a box, proportions preserved.
 ; Syntax.........: _PDFX_ImageFit(ByRef $oDocument, $sPath, $fX, $fY, $fWidth, $fHeight, $sAlign = "C")
-; Parameters ....: $oDocument - handle du document.
-;                  $sPath     - chemin du fichier image.
-;                  $fX        - abscisse de la boite d'accueil.
-;                  $fY        - ordonnee de la boite d'accueil.
-;                  $fWidth    - largeur de la boite, en points.
-;                  $fHeight   - hauteur de la boite, en points.
-;                  $sAlign    - C centre (defaut), ou combinaison de L, R, T, B.
+; Parameters ....: $oDocument - document handle.
+;                  $sPath     - path of the image file.
+;                  $fX        - x coordinate of the containing box.
+;                  $fY        - y coordinate of the containing box.
+;                  $fWidth    - width of the box, in points.
+;                  $fHeight   - height of the box, in points.
+;                  $sAlign    - C centre (default), or a combination of L, R, T, B.
 ; Return values .: Success      - True.
-;                  Failure      - False et @error = 2 ou 3 si l'image est illisible ou vide.
+;                  Failure      - False with @error = 2 or 3 if the image is unreadable or empty.
 ; Author ........: Numeric1
 ; Modified.......:
-; Remarks .......: Aucune deformation : l'image est mise a l'echelle du cote limitant, puis positionnee dans la boite.
+; Remarks .......: No distortion: the image is scaled by the limiting side, then positioned in the box.
 ; Related .......: _PDFX_Image, _PDFX_ImageInfo
-; Link ..........: https://www.autoitscript.com/forum/
+; Link ..........: https://www.autoitscript.com/forum/topic/213930-udf-pdfx/
 ; Example .......: Yes
 ; ===============================================================================================================================
 Func _PDFX_ImageFit(ByRef $oDocument, $sPath, $fX, $fY, $fWidth, $fHeight, $sAlign = "C")
@@ -1680,19 +1675,19 @@ EndFunc   ;==>_PDFX_ImageFit
 
 ; #FUNCTION# ====================================================================================================================
 ; Name...........: _PDFX_ImageInfo
-; Description ...: Renvoie les caracteristiques d'une image et l'inscrit dans le document.
+; Description ...: Returns the characteristics of an image and registers it in the document.
 ; Syntax.........: _PDFX_ImageInfo(ByRef $oDocument, $sPath)
-; Parameters ....: $oDocument - handle du document.
-;                  $sPath     - chemin du fichier image.
-; Return values .: Success      - tableau de 6 elements : 0 largeur en pixels, 1 hauteur en pixels, 2 largeur en
-;                                  points a 96 dpi, 3 hauteur en points, 4 taille du fichier en octets, 5 extension en
-;                                  majuscules.
-;                  Failure      - 0 et @error = 1 ou 2.
+; Parameters ....: $oDocument - document handle.
+;                  $sPath     - path of the image file.
+; Return values .: Success      - 6-element array: 0 width in pixels, 1 height in pixels, 2 width in
+;                                  points at 96 dpi, 3 height in points, 4 file size in bytes, 5 extension in
+;                                  upper case.
+;                  Failure      - 0 with @error = 1 or 2.
 ; Author ........: Numeric1
 ; Modified.......:
-; Remarks .......: L'image est ajoutee aux ressources du PDF, qu'elle soit dessinee ensuite ou non.
+; Remarks .......: The image is added to the PDF resources, whether it is drawn afterwards or not.
 ; Related .......: _PDFX_Image, _PDFX_ImageFit
-; Link ..........: https://www.autoitscript.com/forum/
+; Link ..........: https://www.autoitscript.com/forum/topic/213930-udf-pdfx/
 ; Example .......: Yes
 ; ===============================================================================================================================
 Func _PDFX_ImageInfo(ByRef $oDocument, $sPath)
@@ -1736,7 +1731,7 @@ Func _PDFX_EnsureImage(ByRef $oDocument, $sPath)
 		$sColorSpace = "/DeviceGray"
 	ElseIf $iComponents = 4 Then
 		$sColorSpace = "/DeviceCMYK"
-		; Adobe ecrit les valeurs CMJN inversees ; sans APP14, on respecte l'ordre PDF.
+; Adobe stores CMYK values inverted; without APP14, the PDF order is respected.
 		If $bAdobe Then $sDecode = " /Decode [1 0 1 0 1 0 1 0]"
 	EndIf
 
@@ -1760,19 +1755,19 @@ Func _PDFX_EnsureImage(ByRef $oDocument, $sPath)
 	Return _PDFX_ImageRow($aImages, $iNewIndex)
 EndFunc   ;==>_PDFX_EnsureImage
 
-; Retourner directement une ligne de tableau 2D provoque une erreur fatale AutoIt :
-; on renvoie une copie 1D.
+; Returning a row of a 2D array directly is a fatal AutoIt error:
+; a 1D copy is returned instead.
 Func _PDFX_ImageRow($aImages, $iIndex)
 	Local $aRow[5] = [$aImages[$iIndex][0], $aImages[$iIndex][1], $aImages[$iIndex][2], $aImages[$iIndex][3], $aImages[$iIndex][4]]
 	Return $aRow
 EndFunc   ;==>_PDFX_ImageRow
 
-; Asc() sur un binaire lit la chaine "0x..", pas l'octet : Number() est requis.
+; Asc() on binary reads the "0x.." string, not the byte: Number() is required.
 Func _PDFX_ByteAt($bData, $iPos)
 	Return Number(BinaryMid($bData, $iPos, 1))
 EndFunc   ;==>_PDFX_ByteAt
 
-; Lit la geometrie JPEG et signale les fichiers CMJN ecrits par Adobe (marqueur APP14).
+; Reads the JPEG geometry and flags CMYK files written by Adobe (APP14 marker).
 Func _PDFX_JpegInfo($bData, ByRef $iWidth, ByRef $iHeight, ByRef $iComponents, ByRef $bAdobe)
 	Local $iLength = BinaryLen($bData)
 	$bAdobe = False
@@ -1809,7 +1804,7 @@ Func _PDFX_JpegInfo($bData, ByRef $iWidth, ByRef $iHeight, ByRef $iComponents, B
 	Return False
 EndFunc   ;==>_PDFX_JpegInfo
 
-; Convertit tout format GDI+ (PNG, BMP, GIF, TIFF...) en JPEG sur fond blanc.
+; Converts any GDI+ format (PNG, BMP, GIF, TIFF...) to JPEG on a white background.
 Func _PDFX_ConvertToJpeg($sPath, ByRef $iWidth, ByRef $iHeight)
 	If Not $__PDFX_GdiPlusLoaded Then
 		_GDIPlus_Startup()
@@ -1847,37 +1842,38 @@ Func _PDFX_ConvertToJpeg($sPath, ByRef $iWidth, ByRef $iHeight)
 	Return $bJpeg
 EndFunc   ;==>_PDFX_ConvertToJpeg
 
-#EndRegion
+#EndRegion - Images ----------------------------------------------------------------------------------------------------------------
 
-#Region - Tableaux --------------------------------------------------------------------------------------------------------------
-; Tableaux pagines avec en-tete repete, zebrures et grille.
+#Region - Tables ----------------------------------------------------------------------------------------------------------------
+; Paginated tables with repeated header, zebra stripes and grid.
 
 ; #FUNCTION# ====================================================================================================================
 ; Name...........: _PDFX_Table
-; Description ...: Dessine un tableau pagine, avec en-tete repete et grille.
+; Description ...: Draws a paginated table with repeated header and grid.
 ; Syntax.........: _PDFX_Table(ByRef $oDocument, $fX, $fY, $fWidth, $aColumns, $aRows, $sOptions = "")
-; Parameters ....: $oDocument - handle du document.
-;                  $fX        - abscisse du coin superieur gauche.
-;                  $fY        - ordonnee du coin superieur gauche.
-;                  $fWidth    - largeur totale du tableau, en points.
-;                  $aColumns  - tableau [n][2 ou 3] : 0 titre, 1 fraction de largeur, 2 alignement L/C/R.
-;                  $aRows     - tableau [n][m] de cellules ; toute valeur est convertie en chaine.
-;                  $sOptions  - options separees par des points-virgules, detaillees dans Remarques.
-; Return values .: Success      - ordonnee du bas du tableau, prete pour la suite du contenu.
+; Parameters ....: $oDocument - document handle.
+;                  $fX        - x coordinate of the top-left corner.
+;                  $fY        - y coordinate of the top-left corner.
+;                  $fWidth    - total table width, in points.
+;                  $aColumns  - [n][2 or 3] array: 0 title, 1 width fraction, 2 L/C/R alignment.
+;                  $aRows     - [n][m] array of cells; any value is converted to a string.
+;                  $sOptions  - semicolon-separated options, detailed under Remarks.
+; Return values .: Success      - y coordinate of the bottom of the table, ready for the following content.
+;                  Failure      - $fY unchanged, @error = 1 when the rows are narrower than the columns.
 ; Author ........: Numeric1
 ; Modified.......:
-; Remarks .......: Options : padding=4, fontsize=0 (taille courante), border=0.5, bordercolor=0xBFC9D9,
+; Remarks .......: Options: padding=4, fontsize=0 (current size), border=0.5, bordercolor=0xBFC9D9,
 ;                  headfill=0xE8EEF7, headcolor=0x1F3864, zebra=0, zebracolor=0xF7F9FC,
-;                  textcolor=0x000000, pagebreak=1. headfill=-1 supprime le fond de la ligne d'en-tete.
-;                  Avec pagebreak=1, l'en-tete est reaffiche en haut de chaque nouvelle page.
+;                  textcolor=0x000000, pagebreak=1. headfill=-1 removes the header row background.
+;                  With pagebreak=1, the header is redrawn at the top of every new page.
 ; Related .......: _PDFX_TextWrap, _PDFX_Line, _PDFX_AddPage
-; Link ..........: https://www.autoitscript.com/forum/
+; Link ..........: https://www.autoitscript.com/forum/topic/213930-udf-pdfx/
 ; Example .......: Yes
 ; ===============================================================================================================================
 Func _PDFX_Table(ByRef $oDocument, $fX, $fY, $fWidth, $aColumns, $aRows, $sOptions = "")
 	Local $iColumnCount = UBound($aColumns, 1)
 	If $iColumnCount < 1 Then Return $fY
-
+	If UBound($aRows, 2) > 0 And UBound($aRows, 2) < $iColumnCount Then Return SetError(1, 0, $fY)
 	Local $fPadding = Number(_PDFX_Opt($sOptions, "padding", 4))
 	Local $fBorder = Number(_PDFX_Opt($sOptions, "border", 0.5))
 	Local $fFontSize = Number(_PDFX_Opt($sOptions, "fontsize", 0))
@@ -1891,7 +1887,7 @@ Func _PDFX_Table(ByRef $oDocument, $fX, $fY, $fWidth, $aColumns, $aRows, $sOptio
 	If $fFontSize <= 0 Then $fFontSize = $oDocument[$__PDFX_DOC_FONTSIZE]
 	Local $fLineHeight = $fFontSize * 1.2
 
-	; Largeurs et alignements de colonnes
+; Column widths and alignments
 	Local $aColumnWidths[$iColumnCount]
 	Local $aAlignments[$iColumnCount]
 	Local $fFractionTotal = 0
@@ -1910,13 +1906,13 @@ Func _PDFX_Table(ByRef $oDocument, $fX, $fY, $fWidth, $aColumns, $aRows, $sOptio
 		$aColumnWidths[$iColumn] = $aColumnWidths[$iColumn] / $fFractionTotal * $fWidth
 	Next
 
-	; Ligne d'en-tete au meme format qu'une ligne de donnees
+; Header row in the same format as a data row
 	Local $aHeaderRow[1][$iColumnCount]
 	For $iColumn = 0 To $iColumnCount - 1
 		$aHeaderRow[0][$iColumn] = String($aColumns[$iColumn][0])
 	Next
 
-	; Sauvegarde de l'etat typographique
+; Save the typographic state
 	Local $iPreviousFont = $oDocument[$__PDFX_DOC_FONT]
 	Local $fPreviousSize = $oDocument[$__PDFX_DOC_FONTSIZE]
 	Local $sPreviousFill = $oDocument[$__PDFX_DOC_FILL]
@@ -1927,12 +1923,12 @@ Func _PDFX_Table(ByRef $oDocument, $fX, $fY, $fWidth, $aColumns, $aRows, $sOptio
 
 	Local $iRowCount = UBound($aRows, 1)
 
-	; En-tete
+; Header
 	Local $fHeaderHeight = _PDFX_TableRowHeight($oDocument, $aHeaderRow, $aColumnWidths, $fPadding, $fLineHeight, $fFontSize, $iHeaderFont)
 	$fY = _PDFX_TableDrawRow($oDocument, $fX, $fY, $aColumnWidths, $aHeaderRow, $aAlignments, $fPadding, $fLineHeight, $fFontSize, $iHeaderFont, $vHeadFill, $vHeadColor)
 	$fY = _PDFX_TableDrawLines($oDocument, $fX, $fY - $fHeaderHeight, $fWidth, $aColumnWidths, $fHeaderHeight, $fBorder, $vBorderColor)
 
-	; Lignes
+; Rows
 	For $iRow = 0 To $iRowCount - 1
 		Local $aRow[1][$iColumnCount]
 		For $iColumn = 0 To $iColumnCount - 1
@@ -1955,7 +1951,7 @@ Func _PDFX_Table(ByRef $oDocument, $fX, $fY, $fWidth, $aColumns, $aRows, $sOptio
 		$fY = _PDFX_TableDrawLines($oDocument, $fX, $fY - $fRowHeight, $fWidth, $aColumnWidths, $fRowHeight, $fBorder, $vBorderColor)
 	Next
 
-	; Restauration
+; Restore
 	$oDocument[$__PDFX_DOC_FONT] = $iPreviousFont
 	$oDocument[$__PDFX_DOC_FONTSIZE] = $fPreviousSize
 	$oDocument[$__PDFX_DOC_FILL] = $sPreviousFill
@@ -1980,7 +1976,7 @@ Func _PDFX_TableRowHeight($oDocument, $aRow, $aColumnWidths, $fPadding, $fLineHe
 	Return $iMaxLines * $fLineHeight + 2 * $fPadding
 EndFunc   ;==>_PDFX_TableRowHeight
 
-; Dessine une ligne (fond + textes) et renvoie le bas de la ligne.
+; Draws one row (background + texts) and returns the bottom of the row.
 Func _PDFX_TableDrawRow(ByRef $oDocument, $fX, $fY, $aColumnWidths, $aRow, $aAlignments, $fPadding, $fLineHeight, $fFontSize, $iFont, $vFillColor, $vTextColor)
 	Local $iColumnCount = UBound($aRow, 2)
 	Local $fRowHeight = _PDFX_TableRowHeight($oDocument, $aRow, $aColumnWidths, $fPadding, $fLineHeight, $fFontSize, $iFont)
@@ -2036,28 +2032,28 @@ Func _PDFX_TableDrawLines(ByRef $oDocument, $fX, $fTop, $fWidth, $aColumnWidths,
 	Return $fBottom
 EndFunc   ;==>_PDFX_TableDrawLines
 
-#EndRegion
+#EndRegion - Tables ----------------------------------------------------------------------------------------------------------------
 
-#Region - Liens, metadonnees, en-tete et pied -----------------------------------------------------------------------------------
-; Annotations de lien, dictionnaire /Info et habillage des pages.
+#Region - Links, metadata, header and footer ------------------------------------------------------------------------------------
+; Link annotations, /Info dictionary, page header and footer.
 
 ; #FUNCTION# ====================================================================================================================
 ; Name...........: _PDFX_Link
-; Description ...: Ajoute un lien hypertexte cliquable.
+; Description ...: Adds a clickable hypertext link.
 ; Syntax.........: _PDFX_Link(ByRef $oDocument, $fX, $fY, $fWidth, $fHeight, $sUrl)
-; Parameters ....: $oDocument - handle du document.
-;                  $fX        - abscisse du coin superieur gauche de la zone.
-;                  $fY        - ordonnee du coin superieur gauche de la zone.
-;                  $fWidth    - largeur de la zone cliquable, en points.
-;                  $fHeight   - hauteur de la zone cliquable, en points.
-;                  $sUrl      - adresse complete, par exemple https://www.autoitscript.com/forum/.
+; Parameters ....: $oDocument - document handle.
+;                  $fX        - x coordinate of the top-left corner of the area.
+;                  $fY        - y coordinate of the top-left corner of the area.
+;                  $fWidth    - width of the clickable area, in points.
+;                  $fHeight   - height of the clickable area, in points.
+;                  $sUrl      - full address, for example https://www.autoitscript.com/forum/.
 ; Return values .: Success      - True.
-;                  Failure      - False si aucune page n'est ouverte.
+;                  Failure      - False if no page is open.
 ; Author ........: Numeric1
 ; Modified.......:
-; Remarks .......: Le lien est une annotation /Link invisible (/Border [0 0 0]) : il ne modifie pas le rendu.
+; Remarks .......: The link is an invisible /Link annotation (/Border [0 0 0]): it does not alter the rendering.
 ; Related .......: _PDFX_Text, _PDFX_Save
-; Link ..........: https://www.autoitscript.com/forum/
+; Link ..........: https://www.autoitscript.com/forum/topic/213930-udf-pdfx/
 ; Example .......: Yes
 ; ===============================================================================================================================
 Func _PDFX_Link(ByRef $oDocument, $fX, $fY, $fW, $fH, $sUrl)
@@ -2075,30 +2071,30 @@ EndFunc   ;==>_PDFX_Link
 
 ; #FUNCTION# ====================================================================================================================
 ; Name...........: _PDFX_LinkPage
-; Description ...: Ajoute un lien interne vers une autre page du document.
+; Description ...: Adds an internal link to another page of the document.
 ; Syntax.........: _PDFX_LinkPage(ByRef $oDocument, $fX, $fY, $fWidth, $fHeight, $iPage, $fYTarget = -1)
-; Parameters ....: $oDocument - handle du document.
-;                  $fX        - abscisse du coin superieur gauche de la zone cliquable.
-;                  $fY        - ordonnee du coin superieur gauche de la zone.
-;                  $fWidth    - largeur de la zone, en points.
-;                  $fHeight   - hauteur de la zone, en points.
-;                  $iPage     - page cible, numerotee a partir de 1. Elle peut ne pas encore
-;                               exister : le lien est resolu a l'enregistrement et ignore si la
-;                               page n'a jamais ete creee.
-;                  $fYTarget  - ordonnee d'arrivee, en points depuis le haut de la page cible ;
-;                               -1 (defaut) cadre la page entiere (/Fit).
+; Parameters ....: $oDocument - document handle.
+;                  $fX        - x coordinate of the top-left corner of the clickable area.
+;                  $fY        - y coordinate of the top-left corner of the area.
+;                  $fWidth    - width of the area, in points.
+;                  $fHeight   - height of the area, in points.
+;                  $iPage     - target page, numbered from 1. It may not exist yet:
+;                               the link is resolved at save time and dropped if the page
+;                               was never created.
+;                  $fYTarget  - arrival y coordinate, in points from the top of the target page;
+;                               -1 (default) frames the whole page (/Fit).
 ; Return values .: Success      - True.
-;                  Failure      - False et @error = 1 si aucune page n'est ouverte ou si $iPage
-;                                 vaut moins de 1, 2 si le document a deja ete enregistre.
+;                  Failure      - False with @error = 1 if no page is open or if $iPage
+;                                 is less than 1, 2 if the document has already been saved.
 ; Author ........: Numeric1
 ; Modified.......:
-; Remarks .......: L'annotation /Link est invisible (/Border [0 0 0]). La destination est ecrite en
-;                  /Dest et non en action /URI : le lien reste valable hors ligne et apres
-;                  reorganisation du document par un lecteur. L'annotation n'est creee qu'a
-;                  l'enregistrement, ce qui permet de relier un sommaire a des chapitres ecrits
-;                  plus tard.
+; Remarks .......: The /Link annotation is invisible (/Border [0 0 0]). The destination is written as
+;                  /Dest rather than a /URI action: the link remains valid offline and after
+;                  a reader reorganises the document. The annotation is created only at
+;                  save time, which allows linking a table of contents to chapters written
+;                  later.
 ; Related .......: _PDFX_Link, _PDFX_AddBookmark, _PDFX_Save
-; Link ..........: https://www.autoitscript.com/forum/
+; Link ..........: https://www.autoitscript.com/forum/topic/213930-udf-pdfx/
 ; Example .......: Yes
 ; ===============================================================================================================================
 Func _PDFX_LinkPage(ByRef $oDocument, $fX, $fY, $fW, $fH, $iPage, $fYTarget = -1)
@@ -2124,28 +2120,28 @@ EndFunc   ;==>_PDFX_LinkPage
 
 ; #FUNCTION# ====================================================================================================================
 ; Name...........: _PDFX_AddBookmark
-; Description ...: Ajoute une entree au sommaire du document (arbre /Outlines).
+; Description ...: Adds an entry to the document outline (/Outlines tree).
 ; Syntax.........: _PDFX_AddBookmark(ByRef $oDocument, $sTitle, $iLevel = 0, $iPage = -1, $fY = -1)
-; Parameters ....: $oDocument - handle du document.
-;                  $sTitle    - libelle affiche dans le volet de navigation.
-;                  $iLevel    - profondeur, 0 pour une entree racine. Un niveau ne peut descendre que
-;                               d'un cran a la fois : toute valeur plus profonde est ramenee a
-;                               niveau precedent + 1, une valeur negative a 0.
-;                  $iPage     - page cible, numerotee a partir de 1 ; -1 (defaut) = page courante.
-;                  $fY        - ordonnee d'arrivee, en points depuis le haut de la page cible ;
-;                               -1 (defaut) cadre la page entiere (/Fit).
-; Return values .: Success      - numero du signet (a partir de 1).
-;                  Failure      - -1 et @error = 1 si le titre est vide ou la page inexistante,
-;                                 2 si le document a deja ete enregistre.
+; Parameters ....: $oDocument - document handle.
+;                  $sTitle    - label shown in the navigation pane.
+;                  $iLevel    - depth, 0 for a root entry. A level can only go down
+;                               one step at a time: any deeper value is clamped to
+;                               previous level + 1, and a negative value to 0.
+;                  $iPage     - target page, numbered from 1; -1 (default) = current page.
+;                  $fY        - arrival y coordinate, in points from the top of the target page;
+;                               -1 (default) frames the whole page (/Fit).
+; Return values .: Success      - bookmark number (starting at 1).
+;                  Failure      - -1 with @error = 1 if the title is empty or the page does not exist,
+;                                 2 if the document has already been saved.
 ; Author ........: Numeric1
 ; Modified.......:
-; Remarks .......: Les signets sont assembles a l'enregistrement : l'ordre d'ajout devient l'ordre
-;                  de lecture, chaque entree recoit /Parent, /Prev, /Next, /First, /Last et un
-;                  /Count (nombre de descendants). Le volet s'ouvre par defaut des qu'un signet
-;                  existe, sauf si _PDFX_SetPageMode() impose un autre mode. Les titres non ASCII
-;                  sont ecrits en UTF-16BE, comme les metadonnees.
+; Remarks .......: Bookmarks are assembled at save time: insertion order becomes reading
+;                  order, each entry receives /Parent, /Prev, /Next, /First, /Last and a
+;                  /Count (number of descendants). The pane opens by default as soon as a bookmark
+;                  exists, unless _PDFX_SetPageMode() imposes another mode. Non-ASCII titles
+;                  are written in UTF-16BE, like the metadata.
 ; Related .......: _PDFX_SetPageMode, _PDFX_LinkPage, _PDFX_Save
-; Link ..........: https://www.autoitscript.com/forum/
+; Link ..........: https://www.autoitscript.com/forum/topic/213930-udf-pdfx/
 ; Example .......: Yes
 ; ===============================================================================================================================
 Func _PDFX_AddBookmark(ByRef $oDocument, $sTitle, $iLevel = 0, $iPage = -1, $fY = -1)
@@ -2176,21 +2172,21 @@ EndFunc   ;==>_PDFX_AddBookmark
 
 ; #FUNCTION# ====================================================================================================================
 ; Name...........: _PDFX_SetPageMode
-; Description ...: Choisit le panneau affiche a l'ouverture du document.
+; Description ...: Chooses the panel displayed when the document opens.
 ; Syntax.........: _PDFX_SetPageMode(ByRef $oDocument, $sMode = "UseOutlines")
-; Parameters ....: $oDocument - handle du document.
-;                  $sMode     - UseNone, UseOutlines (signets), UseThumbs (vignettes), FullScreen, ou
-;                               une chaine vide pour revenir au comportement automatique (signets
-;                               ouverts si le document en contient). La casse est ignoree.
+; Parameters ....: $oDocument - document handle.
+;                  $sMode     - UseNone, UseOutlines (bookmarks), UseThumbs (thumbnails), FullScreen, or
+;                               an empty string to return to the automatic behaviour (bookmarks
+;                               open if the document has any). Case is ignored.
 ; Return values .: Success      - True.
-;                  Failure      - False et @error = 1 si le mode est inconnu, 2 si le document a
-;                                 deja ete enregistre.
+;                  Failure      - False with @error = 1 if the mode is unknown, 2 if the document
+;                                 has already been saved.
 ; Author ........: Numeric1
 ; Modified.......:
-; Remarks .......: Le choix est ecrit dans la cle /PageMode du catalogue. Les lecteurs restent
-;                  libres de l'ignorer (par exemple en mode plein ecran).
+; Remarks .......: The choice is written in the /PageMode key of the catalog. Readers remain
+;                  free to ignore it (for example in full-screen mode).
 ; Related .......: _PDFX_AddBookmark, _PDFX_SetPageLayout
-; Link ..........: https://www.autoitscript.com/forum/
+; Link ..........: https://www.autoitscript.com/forum/topic/213930-udf-pdfx/
 ; Example .......: Yes
 ; ===============================================================================================================================
 Func _PDFX_SetPageMode(ByRef $oDocument, $sMode = "UseOutlines")
@@ -2216,21 +2212,21 @@ EndFunc   ;==>_PDFX_SetPageMode
 
 ; #FUNCTION# ====================================================================================================================
 ; Name...........: _PDFX_SetPageLayout
-; Description ...: Choisit la disposition des pages a l'ouverture du document.
+; Description ...: Chooses the page layout when the document opens.
 ; Syntax.........: _PDFX_SetPageLayout(ByRef $oDocument, $sLayout)
-; Parameters ....: $oDocument - handle du document.
+; Parameters ....: $oDocument - document handle.
 ;                  $sLayout   - SinglePage, OneColumn, TwoColumnLeft, TwoColumnRight, TwoPageLeft,
-;                               TwoPageRight, ou une chaine vide pour ne rien imposer. La casse est
-;                               ignoree.
+;                               TwoPageRight, or an empty string to impose nothing. Case is
+;                               ignored.
 ; Return values .: Success      - True.
-;                  Failure      - False et @error = 1 si la disposition est inconnue, 2 si le
-;                                 document a deja ete enregistre.
+;                  Failure      - False with @error = 1 if the layout is unknown, 2 if the
+;                                 document has already been saved.
 ; Author ........: Numeric1
 ; Modified.......:
-; Remarks .......: Le choix est ecrit dans la cle /PageLayout du catalogue. Il reste indicatif :
-;                  le lecteur peut appliquer sa propre preference.
+; Remarks .......: The choice is written in the /PageLayout key of the catalog. It remains a hint:
+;                  the reader may apply its own preference.
 ; Related .......: _PDFX_SetPageMode
-; Link ..........: https://www.autoitscript.com/forum/
+; Link ..........: https://www.autoitscript.com/forum/topic/213930-udf-pdfx/
 ; Example .......: Yes
 ; ===============================================================================================================================
 Func _PDFX_SetPageLayout(ByRef $oDocument, $sLayout)
@@ -2260,20 +2256,20 @@ EndFunc   ;==>_PDFX_SetPageLayout
 
 ; #FUNCTION# ====================================================================================================================
 ; Name...........: _PDFX_SetMeta
-; Description ...: Renseigne les metadonnees du document.
+; Description ...: Fills in the document metadata.
 ; Syntax.........: _PDFX_SetMeta(ByRef $oDocument, $sTitle = "", $sAuthor = "", $sSubject = "", $sKeywords = "")
-; Parameters ....: $oDocument - handle du document.
-;                  $sTitle    - titre du document.
-;                  $sAuthor   - auteur.
-;                  $sSubject  - sujet.
-;                  $sKeywords - mots-cles, separes par des virgules.
+; Parameters ....: $oDocument - document handle.
+;                  $sTitle    - document title.
+;                  $sAuthor   - author.
+;                  $sSubject  - subject.
+;                  $sKeywords - keywords, separated by commas.
 ; Return values .: Success      - True.
 ; Author ........: Numeric1
 ; Modified.......:
-; Remarks .......: Les valeurs sont ecrites dans le dictionnaire /Info lors de _PDFX_Save(). Une chaine vide conserve
-;                  la valeur precedente ; le producteur et la date de creation sont ajoutes automatiquement.
+; Remarks .......: Values are written into the /Info dictionary during _PDFX_Save(). An empty string keeps
+;                  the previous value; producer and creation date are added automatically.
 ; Related .......: _PDFX_Save
-; Link ..........: https://www.autoitscript.com/forum/
+; Link ..........: https://www.autoitscript.com/forum/topic/213930-udf-pdfx/
 ; Example .......: Yes
 ; ===============================================================================================================================
 Func _PDFX_SetMeta(ByRef $oDocument, $sTitle = "", $sAuthor = "", $sSubject = "", $sKeywords = "")
@@ -2288,27 +2284,27 @@ EndFunc   ;==>_PDFX_SetMeta
 
 ; #FUNCTION# ====================================================================================================================
 ; Name...........: _PDFX_SetHeader
-; Description ...: Definit l'en-tete applique a toutes les pages.
+; Description ...: Defines the header applied to every page.
 ; Syntax.........: _PDFX_SetHeader(ByRef $oDocument, $sLeft = "", $sCenter = "", $sRight = "", $iSize = 8, _
 ;                  $sFont = "", $sStyle = "", $vColor = -1)
-; Parameters ....: $oDocument - handle du document.
-;                  $sLeft     - texte de la zone gauche ; jetons {page}, {pages} et {date} acceptes.
-;                  $sCenter   - texte de la zone centrale.
-;                  $sRight    - texte de la zone droite.
-;                  $iSize     - taille de police ; une valeur inferieure ou egale a 0 conserve la valeur courante.
-;                               La taille est commune a l'en-tete et au pied.
-;                  $sFont     - famille de police ; une chaine vide conserve la valeur courante (Helvetica).
-;                  $sStyle    - style : combinaison de B (gras) et I (italique) ; une chaine vide revient au style normal.
-;                  $vColor    - couleur du texte et du filet : 0xRRGGBB, "nom" ou tableau [R, G, B] ; -1 conserve la
-;                               couleur courante.
+; Parameters ....: $oDocument - document handle.
+;                  $sLeft     - text of the left area; tokens {page}, {pages} and {date} accepted.
+;                  $sCenter   - text of the centre area.
+;                  $sRight    - text of the right area.
+;                  $iSize     - font size; a value less than or equal to 0 keeps the current value.
+;                               The size is shared by the header and the footer.
+;                  $sFont     - font family; an empty string keeps the current value (Helvetica).
+;                  $sStyle    - style: combination of B (bold) and I (italic); an empty string restores normal style.
+;                  $vColor    - colour of the text and rule: 0xRRGGBB, "name" or array [R, G, B]; -1 keeps the
+;                               current colour.
 ; Return values .: Success      - True.
-;                  Failure      - True et @error = 1 si une composante de couleur a ete ramenee dans [0, 255].
+;                  Failure      - True with @error = 1 if a colour component was clamped into [0, 255].
 ; Author ........: Numeric1
 ; Modified.......:
-; Remarks .......: L'en-tete est insere au moment de _PDFX_Save(), sur chaque page, suivi d'un filet de separation.
-;                  Une zone vide est ignoree ; trois zones vides suppriment l'en-tete.
+; Remarks .......: The header is inserted during _PDFX_Save(), on every page, followed by a separating rule.
+;                  An empty area is ignored; three empty areas remove the header.
 ; Related .......: _PDFX_SetFooter, _PDFX_Save
-; Link ..........: https://www.autoitscript.com/forum/
+; Link ..........: https://www.autoitscript.com/forum/topic/213930-udf-pdfx/
 ; Example .......: Yes
 ; ===============================================================================================================================
 Func _PDFX_SetHeader(ByRef $oDocument, $sLeft = "", $sCenter = "", $sRight = "", $iSize = 8, $sFont = "", $sStyle = "", $vColor = -1)
@@ -2330,26 +2326,26 @@ EndFunc   ;==>_PDFX_SetHeader
 
 ; #FUNCTION# ====================================================================================================================
 ; Name...........: _PDFX_SetFooter
-; Description ...: Definit le pied de page applique a toutes les pages.
+; Description ...: Defines the footer applied to every page.
 ; Syntax.........: _PDFX_SetFooter(ByRef $oDocument, $sLeft = "", $sCenter = "", $sRight = "", $iSize = 8, _
 ;                  $sFont = "", $sStyle = "", $vColor = -1)
-; Parameters ....: $oDocument - handle du document.
-;                  $sLeft     - texte de la zone gauche ; jetons {page}, {pages} et {date} acceptes.
-;                  $sCenter   - texte de la zone centrale.
-;                  $sRight    - texte de la zone droite.
-;                  $iSize     - taille de police ; une valeur inferieure ou egale a 0 conserve la valeur courante.
-;                               La taille est commune a l'en-tete et au pied.
-;                  $sFont     - famille de police ; une chaine vide conserve la valeur courante (Helvetica).
-;                  $sStyle    - style : combinaison de B (gras) et I (italique) ; une chaine vide revient au style normal.
-;                  $vColor    - couleur du texte : 0xRRGGBB, "nom" ou tableau [R, G, B] ; -1 conserve la couleur courante.
+; Parameters ....: $oDocument - document handle.
+;                  $sLeft     - text of the left area; tokens {page}, {pages} and {date} accepted.
+;                  $sCenter   - text of the centre area.
+;                  $sRight    - text of the right area.
+;                  $iSize     - font size; a value less than or equal to 0 keeps the current value.
+;                               The size is shared by the header and the footer.
+;                  $sFont     - font family; an empty string keeps the current value (Helvetica).
+;                  $sStyle    - style: combination of B (bold) and I (italic); an empty string restores normal style.
+;                  $vColor    - text colour: 0xRRGGBB, "name" or array [R, G, B]; -1 keeps the current colour.
 ; Return values .: Success      - True.
-;                  Failure      - True et @error = 1 si une composante de couleur a ete ramenee dans [0, 255].
+;                  Failure      - True with @error = 1 if a colour component was clamped into [0, 255].
 ; Author ........: Numeric1
 ; Modified.......:
-; Remarks .......: Le pied est cale sur la marge basse du document. Exemple de pagination :
+; Remarks .......: The footer sits on the bottom margin of the document. Pagination example:
 ;                  _PDFX_SetFooter($oDocument, '', 'Page {page} / {pages}', '{date}').
 ; Related .......: _PDFX_SetHeader, _PDFX_Save
-; Link ..........: https://www.autoitscript.com/forum/
+; Link ..........: https://www.autoitscript.com/forum/topic/213930-udf-pdfx/
 ; Example .......: Yes
 ; ===============================================================================================================================
 Func _PDFX_SetFooter(ByRef $oDocument, $sLeft = "", $sCenter = "", $sRight = "", $iSize = 8, $sFont = "", $sStyle = "", $vColor = -1)
@@ -2398,13 +2394,13 @@ Func _PDFX_ApplyHeaderFooter(ByRef $oDocument)
 		Local $fPageHeight = $aPages[$iPage][1]
 		Local $sAddition = ""
 
-		; En-tete
+; Header
 		If $aHeaderFooter[0] <> "" Or $aHeaderFooter[1] <> "" Or $aHeaderFooter[2] <> "" Then
 			$sAddition &= _PDFX_HfLine($oDocument, $aHeaderFooter, 0, $fDocumentMargin, $fPageWidth, $fPageHeight, $fFontSize, $iHeaderFont, $aHeaderFooter[7], $iPage + 1, $iPageCount)
-			$sAddition &= _PDFX_StrokeOp($aHeaderFooter[7], 0.5, $fDocumentMargin, $fPageHeight - $fDocumentMargin - $fLineHeight - 3, $fPageWidth - $fDocumentMargin, $fPageHeight - $fDocumentMargin - $fLineHeight - 3, $fPageHeight)
+			$sAddition &= _PDFX_StrokeOp($aHeaderFooter[7], 0.5, $fDocumentMargin, $fDocumentMargin + $fLineHeight + 3, $fPageWidth - $fDocumentMargin, $fDocumentMargin + $fLineHeight + 3, $fPageHeight)
 		EndIf
 
-		; Pied (le texte est cale a $fDocumentMargin du bas)
+; Footer (the text sits $fDocumentMargin above the bottom edge)
 		If $aHeaderFooter[3] <> "" Or $aHeaderFooter[4] <> "" Or $aHeaderFooter[5] <> "" Then
 			Local $fFooterTopY = $fPageHeight - $fDocumentMargin + 4
 			$sAddition &= _PDFX_HfLine($oDocument, $aHeaderFooter, 3, $fFooterTopY, $fPageWidth, $fPageHeight, $fFontSize, $iFooterFont, $aHeaderFooter[10], $iPage + 1, $iPageCount)
@@ -2426,7 +2422,7 @@ Func _PDFX_StrokeOp($sColor, $fLineWidth, $fX1, $fY1, $fX2, $fY2, $fPageHeight)
 			_PDFX_F($fX1) & " " & _PDFX_F($fPageHeight - $fY1) & " m " & _PDFX_F($fX2) & " " & _PDFX_F($fPageHeight - $fY2) & " l S" & @LF & "Q" & @LF
 EndFunc   ;==>_PDFX_StrokeOp
 
-; $iSlotBase : 0 = en-tete, 3 = pied
+; $iSlotBase: 0 = header, 3 = footer
 Func _PDFX_HfLine($oDocument, $aHeaderFooter, $iSlotBase, $fTopY, $fPageWidth, $fPageHeight, $fFontSize, $iFont, $sColor, $iPageNumber, $iPageCount)
 	Local $aFonts = $oDocument[$__PDFX_DOC_FONTS]
 	Local $sResourceName = $aFonts[$iFont][2]
@@ -2460,8 +2456,8 @@ Func _PDFX_HfLine($oDocument, $aHeaderFooter, $iSlotBase, $fTopY, $fPageWidth, $
 		EndIf
 
 		$sStream &= "BT" & @LF & "/" & $sResourceName & " " & _PDFX_F($fFontSize) & " Tf" & @LF & _
-			  $sColor & " rg" & @LF & "1 0 0 1 " & _PDFX_F($fX) & " " & _PDFX_F($fBaseline) & " Tm" & @LF & _
-			  "(" & $sEscaped & ") Tj" & @LF & "ET" & @LF
+				$sColor & " rg" & @LF & "1 0 0 1 " & _PDFX_F($fX) & " " & _PDFX_F($fBaseline) & " Tm" & @LF & _
+				"(" & $sEscaped & ") Tj" & @LF & "ET" & @LF
 	Next
 
 	$oDocument[$__PDFX_DOC_FONT] = $iPreviousFont
@@ -2474,30 +2470,30 @@ Func _PDFX_Today()
 	Return @YEAR & "-" & @MON & "-" & @MDAY
 EndFunc   ;==>_PDFX_Today
 
-#EndRegion
+#EndRegion - Links, metadata, header and footer ------------------------------------------------------------------------------------
 
-#Region - Ecriture du fichier PDF -----------------------------------------------------------------------------------------------
-; Serialisation des objets, table xref, trailer et startxref.
+#Region - Writing the PDF file --------------------------------------------------------------------------------------------------
+; Object serialisation, xref table, trailer and startxref.
 
 ; #FUNCTION# ====================================================================================================================
 ; Name...........: _PDFX_SetCompression
-; Description ...: Active la compression FlateDecode des flux de contenu.
+; Description ...: Enables FlateDecode compression for content streams.
 ; Syntax.........: _PDFX_SetCompression(ByRef $oDocument, $iLevel = 6)
-; Parameters ....: $oDocument - handle du document.
-;                  $iLevel    - niveau de 0 a 9 : 0 laisse les flux en clair (defaut), 1 compresse le plus vite,
-;                               9 cherche les repetitions les plus lointaines. 6 est un bon compromis.
+; Parameters ....: $oDocument - document handle.
+;                  $iLevel    - level from 0 to 9: 0 leaves streams uncompressed (default), 1 compresses fastest,
+;                               9 searches the most distant repetitions. 6 is a good compromise.
 ; Return values .: Success      - True.
-;                  Failure      - True et @error = 1 si le niveau a ete ramene dans l'intervalle [0, 9] ;
-;                                 False et @error = 2 si le document a deja ete enregistre.
+;                  Failure      - True with @error = 1 if the level was clamped into [0, 9];
+;                                 False with @error = 2 if the document has already been saved.
 ; Author ........: Numeric1
 ; Modified.......:
-; Remarks .......: La compression est appliquee a l'enregistrement, page par page : chaque flux de contenu est
-;                  compresse en zlib (RFC 1950) sur DEFLATE (RFC 1951) et precede de /Filter /FlateDecode. Un flux
-;                  qui ne gagne rien (tres court, ou deja dense) est ecrit en clair : le choix est automatique.
-;                  Le code est autonome, sans DLL ni COM ; comptez de l'ordre de 30 Ko/s, contre plusieurs Mo/s pour
-;                  zlib en C. Le rendu des pages est identique, seul le poids du fichier change.
+; Remarks .......: Compression is applied at save time, page by page: each content stream is
+;                  compressed with zlib (RFC 1950) over DEFLATE (RFC 1951) and prefixed with /Filter /FlateDecode.
+;                  A stream that gains nothing (very short, or already dense) is written uncompressed: the
+;                  choice is automatic. The code is self-contained, with no DLL and no COM; expect about
+;                  30 KB/s, against several MB/s for zlib in C. Page rendering is identical; only the file size changes.
 ; Related .......: _PDFX_Save
-; Link ..........: https://www.autoitscript.com/forum/
+; Link ..........: https://www.autoitscript.com/forum/topic/213930-udf-pdfx/
 ; Example .......: Yes
 ; ===============================================================================================================================
 Func _PDFX_SetCompression(ByRef $oDocument, $iLevel = 6)
@@ -2517,22 +2513,22 @@ EndFunc   ;==>_PDFX_SetCompression
 
 ; #FUNCTION# ====================================================================================================================
 ; Name...........: _PDFX_Save
-; Description ...: Ecrit le document au format PDF 1.7.
+; Description ...: Writes the document as PDF 1.7.
 ; Syntax.........: _PDFX_Save(ByRef $oDocument, $sFile)
-; Parameters ....: $oDocument - handle du document.
-;                  $sFile     - chemin du fichier de destination.
+; Parameters ....: $oDocument - document handle.
+;                  $sFile     - path of the destination file.
 ; Return values .: Success      - True.
-;                  Failure      - False et @error = 1 si le fichier ne peut pas etre cree ;
-;                                 False et @error = 2 si le document a deja ete enregistre.
+;                  Failure      - False with @error = 1 if the file cannot be created;
+;                                 False with @error = 2 if the document has already been saved.
 ; Author ........: Numeric1
 ; Modified.......:
-; Remarks .......: Fige la page courante, applique l'en-tete et le pied, puis serialise les objets, la table xref, le
-;                  trailer et startxref. Le fichier produit est autonome et conforme a ISO 32000-1.
-;                  Un document ne s'ecrit qu'une fois : apres un enregistrement reussi, _PDFX_AddPage() et un second
-;                  _PDFX_Save() renvoient @error = 2. Les dates sont en temps universel (suffixe Z), les chaines non
-;                  ASCII de /Info sont ecrites en UTF-16BE, et /ID est une empreinte MD5 deterministe du contenu.
+; Remarks .......: Freezes the current page, applies the header and footer, then serialises the objects, the xref
+;                  table, the trailer and startxref. The produced file is self-contained and conforms to ISO 32000-1.
+;                  A document is written only once: after a successful save, _PDFX_AddPage() and a second
+;                  _PDFX_Save() return @error = 2. Dates are in universal time (Z suffix), non-ASCII strings of
+;                  /Info are written in UTF-16BE, and /ID is a deterministic MD5 fingerprint of the content.
 ; Related .......: _PDFX_New, _PDFX_SetMeta, _PDFX_Close
-; Link ..........: https://www.autoitscript.com/forum/
+; Link ..........: https://www.autoitscript.com/forum/topic/213930-udf-pdfx/
 ; Example .......: Yes
 ; ===============================================================================================================================
 Func _PDFX_Save(ByRef $oDocument, $sFile)
@@ -2574,12 +2570,12 @@ Func _PDFX_Save(ByRef $oDocument, $sFile)
 		$sPageReferences &= $iPageObject & " 0 R "
 	Next
 
-	; Arbre de pages (objet 2)
+; Page tree (object 2)
 	Local $aPageTreeObjects = $oDocument[$__PDFX_DOC_OBJECTS]
 	$aPageTreeObjects[2] = "<< /Type /Pages /Count " & $iPageCount & " /Kids [" & StringStripWS($sPageReferences, 2) & "] >>"
 	$oDocument[$__PDFX_DOC_OBJECTS] = $aPageTreeObjects
 
-	; Navigation : destinations des liens internes, sommaire, mode d'ouverture.
+; Navigation: internal link destinations, outline, opening mode.
 	_PDFX_PatchPageLinks($oDocument, $aPages, $aPageObjects)
 	Local $iOutlineObject = _PDFX_BuildOutline($oDocument, $aPages, $aPageObjects)
 	Local $sPageMode = $oDocument[$__PDFX_DOC_PAGEMODE]
@@ -2603,11 +2599,11 @@ Func _PDFX_Save(ByRef $oDocument, $sFile)
 	If $aMetadata[3] <> "" Then $sInfoBody &= " /Keywords " & _PDFX_TextString($aMetadata[3])
 	Local $sUtcDate = _PDFX_UtcDate()
 	$sInfoBody &= " /Creator " & _PDFX_TextString("PDFX " & $PDFX_VERSION)
-	$sInfoBody &= " /Producer " & _PDFX_TextString("PDFX " & $PDFX_VERSION & " pour AutoIt")
+$sInfoBody &= " /Producer " & _PDFX_TextString("PDFX " & $PDFX_VERSION & " for AutoIt")
 	$sInfoBody &= " /CreationDate (D:" & $sUtcDate & ") /ModDate (D:" & $sUtcDate & ") >>"
 	Local $iInfoObject = _PDFX_AddObject($oDocument, $sInfoBody)
 
-	; Identifiant de document : empreinte du contenu et des metadonnees, donc reproductible.
+; Document identifier: fingerprint of content and metadata, therefore reproducible.
 	Local $sIdSeed = "PDFX " & $PDFX_VERSION & "|" & $aMetadata[0] & "|" & $aMetadata[1] & "|" & $aMetadata[2] & "|" & $aMetadata[3]
 	For $iIndex = 0 To $iPageCount - 1
 		$sIdSeed &= "|" & $aPages[$iIndex][2]
@@ -2625,7 +2621,7 @@ Func _PDFX_Save(ByRef $oDocument, $sFile)
 	Local $sDocumentId = _PDFX_HashHex($sIdSeed)
 	If $sDocumentId = "" Then $sDocumentId = "00000000000000000000000000000000"
 
-	; Assemblage : calcul des offsets puis ecriture
+; Assembly: compute offsets, then write
 	Local $aChunks[1][2]
 	Local $iChunkCount = 0
 	Local $iPosition = 0
@@ -2703,7 +2699,7 @@ Func _PDFX_PackContent(ByRef $oDocument, $sContent)
 	Return $bPacked
 EndFunc   ;==>_PDFX_PackContent
 
-; Destination PDF vers une page : page entiere (/Fit) ou point precis (/XYZ).
+; PDF destination to a page: whole page (/Fit) or precise point (/XYZ).
 Func _PDFX_PageDestination($fPageHeight, $iPageObject, $fYTop)
 	If $fYTop < 0 Then Return "[" & $iPageObject & " 0 R /Fit]"
 	Local $fY = $fPageHeight - $fYTop
@@ -2712,14 +2708,14 @@ Func _PDFX_PageDestination($fPageHeight, $iPageObject, $fYTop)
 	Return "[" & $iPageObject & " 0 R /XYZ 0 " & _PDFX_F($fY) & " null]"
 EndFunc   ;==>_PDFX_PageDestination
 
-; Cree les annotations internes avant les pages, pour que /Annots les reference des leur ecriture.
+; Creates internal annotations before the pages, so /Annots can reference them as soon as they are written.
 Func _PDFX_PreparePageLinks(ByRef $oDocument, ByRef $aPages, $iPageCount)
 	Local $aLinks = $oDocument[$__PDFX_DOC_PAGELINKS]
 	If UBound($aLinks) = 0 Then Return
 	Local $aObjects = $aLinks
 	For $iIndex = 0 To UBound($aLinks) - 1
-		; Colonne 0 : page source avant preparation, objet de l'annotation ensuite.
-		; La valeur 0 marque un lien abandonne, que _PDFX_PatchPageLinks ignorera.
+; Column 0: source page before preparation, annotation object afterwards.
+; The value 0 marks an abandoned link, which _PDFX_PatchPageLinks ignores.
 		Local $iSource = $aLinks[$iIndex][0]
 		$aObjects[$iIndex][0] = 0
 		If $aLinks[$iIndex][1] >= $iPageCount Then ContinueLoop
@@ -2733,7 +2729,7 @@ Func _PDFX_PreparePageLinks(ByRef $oDocument, ByRef $aPages, $iPageCount)
 	$oDocument[$__PDFX_DOC_PAGELINKS] = $aObjects
 EndFunc   ;==>_PDFX_PreparePageLinks
 
-; Complete les annotations internes : leur page cible n'est connue qu'apres la creation des pages.
+; Completes the internal annotations: their target page is only known after the pages are created.
 Func _PDFX_PatchPageLinks(ByRef $oDocument, $aPages, $aPageObjects)
 	Local $aLinks = $oDocument[$__PDFX_DOC_PAGELINKS]
 	If UBound($aLinks) = 0 Then Return
@@ -2749,7 +2745,7 @@ Func _PDFX_PatchPageLinks(ByRef $oDocument, $aPages, $aPageObjects)
 	$oDocument[$__PDFX_DOC_OBJECTS] = $aBodies
 EndFunc   ;==>_PDFX_PatchPageLinks
 
-; Arbre /Outlines : chaines First/Last, liens Parent/Prev/Next et /Count des descendants.
+; /Outlines tree: First/Last chains, Parent/Prev/Next links and /Count of descendants.
 Func _PDFX_BuildOutline(ByRef $oDocument, $aPages, $aPageObjects)
 	Local $aBookmarks = $oDocument[$__PDFX_DOC_BOOKMARKS]
 	Local $iTotal = UBound($aBookmarks)
@@ -2867,30 +2863,30 @@ EndFunc   ;==>_PDFX_ResourceDict
 
 ; #FUNCTION# ====================================================================================================================
 ; Name...........: _PDFX_Close
-; Description ...: Libere les ressources du moteur pour ce document.
+; Description ...: Releases the engine resources for this document.
 ; Syntax.........: _PDFX_Close(ByRef $oDocument)
-; Parameters ....: $oDocument - handle du document.
+; Parameters ....: $oDocument - document handle.
 ; Return values .: Success      - True.
 ; Author ........: Numeric1
 ; Modified.......:
-; Remarks .......: Arrete GDI+ si le moteur l'a demarre. A appeler apres _PDFX_Save() ; le handle n'est plus utilise
-;                  ensuite.
+; Remarks .......: Shuts GDI+ down if the engine started it. Call it after _PDFX_Save(); the handle is not
+;                  used afterwards.
 ; Related .......: _PDFX_Save
-; Link ..........: https://www.autoitscript.com/forum/
+; Link ..........: https://www.autoitscript.com/forum/topic/213930-udf-pdfx/
 ; Example .......: Yes
 ; ===============================================================================================================================
 Func _PDFX_Close(ByRef $oDocument)
-#forceref $oDocument
+	#forceref $oDocument
 	If $__PDFX_GdiPlusLoaded And $__PDFX_GdiPlusOwned Then _GDIPlus_Shutdown()
 	$__PDFX_GdiPlusLoaded = False
 	$__PDFX_GdiPlusOwned = False
 	Return True
 EndFunc   ;==>_PDFX_Close
 
-#EndRegion
+#EndRegion - Writing the PDF file --------------------------------------------------------------------------------------------------
 
-#Region - Utilitaires internes --------------------------------------------------------------------------------------------------
-; Helpers de bas niveau partages par le moteur.
+#Region - Internal utilities --------------------------------------------------------------------------------------------------
+; Low-level helpers shared by the engine.
 
 Func _PDFX_Op(ByRef $oDocument, $sOp)
 	$oDocument[$__PDFX_DOC_CONTENT] &= $sOp & @LF
@@ -2910,7 +2906,7 @@ Func _PDFX_Sum($aValues)
 	Return $fTotal
 EndFunc   ;==>_PDFX_Sum
 
-; Borne une valeur numerique et signale par @error = 1 tout depassement.
+; Clamps a numeric value and reports any overflow with @error = 1.
 Func _PDFX_Clamp($vValue, $fMinimum, $fMaximum)
 	Local $fValue = Number($vValue)
 	If $fValue < $fMinimum Then Return SetError(1, 0, $fMinimum)
@@ -2918,7 +2914,7 @@ Func _PDFX_Clamp($vValue, $fMinimum, $fMaximum)
 	Return $fValue
 EndFunc   ;==>_PDFX_Clamp
 
-; Format compact d'un nombre reel pour le flux PDF.
+; Compact real-number format for the PDF content stream.
 Func _PDFX_F($vNumber)
 	Local $sNumber = StringFormat("%.3f", $vNumber)
 	While StringRight($sNumber, 1) = "0" And StringLen($sNumber) > 1
@@ -2929,7 +2925,7 @@ Func _PDFX_F($vNumber)
 	Return $sNumber
 EndFunc   ;==>_PDFX_F
 
-; Empreinte MD5 d'une chaine, en hexadecimal majuscule (32 caracteres).
+; MD5 fingerprint of a string, as 32 uppercase hex characters.
 Func _PDFX_HashHex($sData)
 	Local $bHash = _Crypt_HashData($sData, $CALG_MD5)
 	If Not IsBinary($bHash) Then Return ""
@@ -2940,7 +2936,7 @@ Func _PDFX_HashHex($sData)
 	Return $sHex
 EndFunc   ;==>_PDFX_HashHex
 
-; Vrai si tous les caracteres tiennent dans l'ASCII imprimable.
+; True when every character is printable ASCII.
 Func _PDFX_IsAscii($sText)
 	For $iChar = 1 To StringLen($sText)
 		Local $iCode = AscW(StringMid($sText, $iChar, 1))
@@ -2949,7 +2945,7 @@ Func _PDFX_IsAscii($sText)
 	Return True
 EndFunc   ;==>_PDFX_IsAscii
 
-; Valeur de texte PDF : chaine litterale si ASCII, hexadecimale UTF-16BE sinon.
+; PDF text value: literal string for ASCII, UTF-16BE hexadecimal otherwise.
 Func _PDFX_TextString($sText)
 	If $sText = "" Then Return "<>"
 	If _PDFX_IsAscii($sText) Then Return "(" & _PDFX_Escape($sText) & ")"
@@ -2962,7 +2958,7 @@ Func _PDFX_TextString($sText)
 	Return "<" & $sHex & ">"
 EndFunc   ;==>_PDFX_TextString
 
-; Horodatage PDF en temps universel : D:AAAAMMJJHHMMSSZ.
+; PDF timestamp in universal time: D:YYYYMMDDHHMMSSZ.
 Func _PDFX_UtcDate()
 	Local $tSystem = DllStructCreate("ushort wYear; ushort wMonth; ushort wDayOfWeek; ushort wDay; ushort wHour; ushort wMinute; ushort wSecond; ushort wMilliseconds")
 	DllCall("kernel32.dll", "none", "GetSystemTime", "struct*", $tSystem)
@@ -2992,7 +2988,7 @@ Func _PDFX_ReadBinary($sPath)
 	Return $bData
 EndFunc   ;==>_PDFX_ReadBinary
 
-; Lit "cle=valeur;cle=valeur" ; renvoie $vDefault si absent.
+; Parses "key=value;key=value"; returns $vDefault when the key is absent.
 Func _PDFX_Opt($sOpts, $sKey, $vDefault)
 	If $sOpts = "" Then Return $vDefault
 	Local $aPairs = StringSplit($sOpts, ";", 2)
@@ -3011,12 +3007,12 @@ Func _PDFX_Opt($sOpts, $sKey, $vDefault)
 EndFunc   ;==>_PDFX_Opt
 
 ; -------------------------------------------------------------------------------------------------------------------------------
-; Compresseur DEFLATE (RFC 1951) et enveloppe zlib (RFC 1950).
+; DEFLATE compressor (RFC 1951) and zlib wrapper (RFC 1950).
 ;
-; Codage Huffman fixe : le bloc ne transporte que les codes du bloc 01, ce qui evite d'ecrire un arbre dynamique
-; et rend la sortie strictement deterministe. La recherche de repetitions est un hachage a trois octets avec
-; chainage borne par le niveau demande. L'ecrivain de bits produit directement la chaine hexadecimale qui sera
-; convertie en binaire une fois le flux termine.
+; Fixed Huffman coding: the block only carries type-01 codes, which avoids writing a dynamic tree and makes
+; the output strictly deterministic. Match search is a three-byte hash with a chain bounded by the requested
+; level. The bit writer produces the hexadecimal string directly; it is converted to binary once the stream
+; is complete.
 
 Func _PDFX_ZlibInit()
 	If $__PDFX_ZLIB_READY Then Return
@@ -3068,8 +3064,8 @@ Func _PDFX_ZlibInit()
 	$__PDFX_ZLIB_READY = True
 EndFunc   ;==>_PDFX_ZlibInit
 
-; Les codes Huffman se lisent du bit de poids fort vers le bit de poids faible, alors que _PDFX_ZlibPut()
-; ecrit du poids faible vers le poids fort : chaque code est donc retourne une fois pour toutes.
+; Huffman codes are read from the most significant bit to the least significant, whereas _PDFX_ZlibPut()
+; writes from the least significant to the most significant: every code is therefore reversed once and for all.
 Func _PDFX_ZlibReverseBits($iValue, $iBits)
 	Local $iResult = 0, $iBit
 	For $iBit = 0 To $iBits - 1
@@ -3079,7 +3075,7 @@ Func _PDFX_ZlibReverseBits($iValue, $iBits)
 	Return $iResult
 EndFunc   ;==>_PDFX_ZlibReverseBits
 
-; Etat de l'ecrivain : [0] bits en attente, [1] nombre de bits en attente, [2] octets deja produits en hexadecimal.
+; Writer state: [0] pending bits, [1] number of pending bits, [2] bytes already produced, in hexadecimal.
 Func _PDFX_ZlibPut(ByRef $aState, $iValue, $iBits)
 	$aState[0] = BitOR($aState[0], BitShift($iValue, -$aState[1]))
 	$aState[1] += $iBits
@@ -3098,8 +3094,8 @@ Func _PDFX_ZlibFlush(ByRef $aState)
 	EndIf
 EndFunc   ;==>_PDFX_ZlibFlush
 
-; Compresse une chaine ASCII en zlib et renvoie un binaire pret pour /FlateDecode.
-; $iDepth borne le nombre de candidats examines par position ; 0 est reserve au flux brut et n'arrive pas ici.
+; Compresses an ASCII string with zlib and returns binary ready for /FlateDecode.
+; $iDepth bounds the candidates examined per position; 0 is reserved for raw streams and never reaches here.
 Func _PDFX_ZlibCompress($sData, $iDepth)
 	_PDFX_ZlibInit()
 	Local $iLength = StringLen($sData)
@@ -3118,7 +3114,7 @@ Func _PDFX_ZlibCompress($sData, $iDepth)
 	Local $aDistCode = $__PDFX_ZLIB_DISTCODE, $aDistExtra = $__PDFX_ZLIB_DISTEXTRA
 	Local $aDistBase = $__PDFX_ZLIB_DISTBASE
 
-	; En-tete zlib : deflate, fenetre 32 Ko, niveau par defaut ; 0x789C est le couple recommande.
+; zlib header: deflate, 32 KB window, default level; 0x789C is the recommended pair.
 	Local $aState[3] = [0, 0, "789C"]
 	_PDFX_ZlibPut($aState, 1, 1)
 	_PDFX_ZlibPut($aState, 1, 2)
@@ -3191,7 +3187,7 @@ Func _PDFX_ZlibCompress($sData, $iDepth)
 	_PDFX_ZlibPut($aState, $aLitCode[256], $aLitBits[256])
 	_PDFX_ZlibFlush($aState)
 
-	; Adler-32 des octets d'origine, en complement de la somme de controle de zlib.
+; Adler-32 of the original bytes, complementing the zlib checksum.
 	$iA = 1
 	$iB = 0
 	For $i = 0 To $iLength - 1
@@ -3203,4 +3199,4 @@ Func _PDFX_ZlibCompress($sData, $iDepth)
 	Return Binary("0x" & $aState[2] & Hex($iB, 4) & Hex($iA, 4))
 EndFunc   ;==>_PDFX_ZlibCompress
 
-#EndRegion
+#EndRegion - Internal utilities --------------------------------------------------------------------------------------------------

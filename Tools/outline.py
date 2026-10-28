@@ -1,9 +1,9 @@
-"""Affiche le sommaire (/Outlines) d'un PDF sans dependance.
+"""Print the outline (/Outlines) of a PDF with no dependency.
 
     python Tools/outline.py document.pdf
 
-Les titres sont decodes (litteraux avec echappements octaux, chaines
-hexadecimales UTF-16BE) et les destinations resolues en numeros de page.
+Titles are decoded (literals with octal escapes, UTF-16BE hexadecimal
+strings) and destinations are resolved to page numbers.
 """
 
 import sys, re
@@ -13,11 +13,11 @@ def _load(path):
     s = open(path, 'rb').read().decode('latin1')
     i = s.rfind('startxref')
     if i < 0:
-        raise SystemExit('%s: pas de startxref' % path)
+        raise SystemExit('%s: no startxref' % path)
     off = int(s[i+9:].split()[0])
     m = re.match(r'xref\r?\n0 (\d+)\r?\n', s[off:])
     if not m:
-        raise SystemExit('%s: table xref illisible' % path)
+        raise SystemExit('%s: unreadable xref table' % path)
     n = int(m.group(1))
     base = off + m.end()
     objs = {}
@@ -91,11 +91,11 @@ def outline(path):
     pages = _pages(bodies)
     catalog = next((b for b in bodies.values() if '/Type /Catalog' in b), None)
     if catalog is None:
-        print('%s: pas de catalogue' % path)
+        print('%s: no catalog' % path)
         return 1
     root = _ref(catalog, 'Outlines')
     if root is None or root not in bodies:
-        print('%s: aucun signet' % path)
+        print('%s: no bookmarks' % path)
         return 0
 
     print('%s: %d page(s)' % (path, len(pages)))
@@ -106,13 +106,13 @@ def outline(path):
         nonlocal total
         while item is not None:
             if item in visited or item not in bodies:
-                print('  ! boucle ou reference invalide (objet %d)' % item)
+                print('  ! loop or invalid reference (object %d)' % item)
                 return
             visited.add(item)
             total += 1
             body = bodies[item]
             m = re.search(r'/Title\s*(\((?:[^()\\]|\\.)*\)|<[0-9A-Fa-f\s]*>)', body)
-            title = _text(m.group(1)) if m else '(sans titre)'
+            title = _text(m.group(1)) if m else '(untitled)'
             dest = re.search(r'/Dest\s*\[\s*(\d+)\s+0\s+R\s*/(Fit|XYZ)([^\]]*)\]', body)
             if dest:
                 page = pages.get(int(dest.group(1)), '?')
@@ -123,7 +123,7 @@ def outline(path):
                     where = '/Fit'
                 where = 'page %s  %s' % (page, where)
             else:
-                where = '/Dest absent'
+                where = 'no /Dest'
             print('  ' * depth + title.ljust(36 - 2 * depth) + where)
             child = _ref(body, 'First')
             if child is not None:
@@ -131,7 +131,7 @@ def outline(path):
             item = _ref(body, 'Next')
 
     show(_ref(bodies[root], 'First'), 0)
-    print('---- %d signet(s)' % total)
+    print('---- %d bookmark(s)' % total)
     return 0
 
 

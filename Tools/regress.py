@@ -1,12 +1,12 @@
-"""Compare les PDF produits a une reference, dates neutralisees.
+"""Compare produced PDFs with a reference, with dates neutralized.
 
     python Tools/regress.py Tests/Reference Examples Tests
 
-Chaque PDF de reference Tests/Reference/X.pdf est compare au PDF de meme nom
-trouve dans les dossiers indiques. Deux elements seulement ne sont pas
-deterministes : les horodatages PDF (/CreationDate, /ModDate, suffixe de fuseau
-compris) et le jeton {date} des en-tetes, ecrit sous la forme (AAAA-MM-JJ) Tj.
-Ils sont neutralises avant comparaison.
+Each reference PDF Tests/Reference/X.pdf is compared with the PDF of the same
+name found in the given folders. Only two elements are not deterministic: the
+PDF timestamps (/CreationDate, /ModDate, time-zone suffix included) and the
+{date} token of headers, written as (YYYY-MM-DD) Tj. Both are neutralized
+before the comparison.
 """
 
 import sys
@@ -45,15 +45,15 @@ def main():
                 found = candidate
                 break
         if not found:
-            print("MANQUANT  %s" % name)
+            print("MISSING    %s" % name)
             failures += 1
             continue
         expected, actual = normalized(ref_path), normalized(found)
         if expected == actual:
-            print("IDENTIQUE %s  (%s)" % (name, digest(actual)))
+            print("IDENTICAL  %s  (%s)" % (name, digest(actual)))
         else:
             failures += 1
-            print("DIFFERENT %s  ref=%s neuf=%s  (%d vs %d octets)" % (
+            print("DIFFERENT  %s  ref=%s new=%s  (%d vs %d bytes)" % (
                 name, digest(expected), digest(actual), len(expected), len(actual)))
     return 1 if failures else 0
 

@@ -1,8 +1,13 @@
+import os
 import sys, re, zlib
 
 
+def _plural(n, word):
+    return '%d %s%s' % (n, word, '' if n == 1 else 's')
+
+
 def _bodies(s, objs):
-    """Corps de chaque objet : de son offset jusqu'au suivant."""
+    """Body of each object: from its offset to the next one."""
     offsets = sorted(objs.values())
     bodies = {}
     for k, o in objs.items():
@@ -12,13 +17,13 @@ def _bodies(s, objs):
 
 
 def _head(body):
-    """Partie texte d'un objet : le dictionnaire, sans les octets du flux."""
+    """Text part of an object: the dictionary, without the stream bytes."""
     p = body.find('stream')
     return body[:p] if p >= 0 else body
 
 
 def _skip_strings(t):
-    """Neutralise les chaines litterales et hexadecimales avant de chercher des references."""
+    """Blank out literal and hexadecimal strings before looking for references."""
     out = []
     i, n = 0, len(t)
     while i < n:
@@ -65,18 +70,18 @@ def _count(t, key):
 def _outline(bodies, pages, errs):
     catalogs = [k for k, b in bodies.items() if '/Type /Catalog' in b]
     if not catalogs:
-        errs.append('pas de catalogue')
+        errs.append('no catalog')
         return 0
     root = _ref(_head(bodies[catalogs[0]]), 'Outlines')
     if root is None:
         return 0
     if root not in bodies or '/Type /Outlines' not in bodies[root]:
-        errs.append('/Outlines pointe vers un objet invalide')
+        errs.append('/Outlines points to an invalid object')
         return 0
     body = bodies[root]
     first, last = _ref(body, 'First'), _ref(body, 'Last')
     if (first is None) != (last is None):
-        errs.append('racine du sommaire : First/Last incomplets')
+        errs.append('outline root: incomplete First/Last')
         return 0
     if first is None:
         return 0
@@ -88,30 +93,30 @@ def _outline(bodies, pages, errs):
         nonlocal total
         total += 1
         if item in visited:
-            errs.append('boucle dans le sommaire (objet %d)' % item)
+            errs.append('loop in the outline (object %d)' % item)
             return 0, None
         visited.add(item)
         b = bodies.get(item, '')
         if '/Title' not in b:
-            errs.append('signet %d sans /Title' % item)
+            errs.append('bookmark %d without /Title' % item)
         if _ref(b, 'Parent') != parent:
-            errs.append('signet %d : /Parent incorrect' % item)
+            errs.append('bookmark %d: wrong /Parent' % item)
         page = _dest_page(b)
         if page is None:
-            errs.append('signet %d : pas de /Dest' % item)
+            errs.append('bookmark %d: no /Dest' % item)
         elif page not in pages:
-            errs.append('signet %d : destination vers l\'objet %d, pas une page' % (item, page))
+            errs.append('bookmark %d: destination to object %d, not a page' % (item, page))
         if prev is None:
             if _ref(b, 'Prev') is not None:
-                errs.append('signet %d : /Prev sur le premier enfant' % item)
+                errs.append('bookmark %d: /Prev on the first child' % item)
         elif _ref(b, 'Prev') != prev:
-            errs.append('signet %d : /Prev incorrect' % item)
+            errs.append('bookmark %d: wrong /Prev' % item)
 
         child = _ref(b, 'First')
         descendants = 0
         if child is not None:
             if _ref(b, 'Last') is None:
-                errs.append('signet %d : /First sans /Last' % item)
+                errs.append('bookmark %d: /First without /Last' % item)
             cprev, ccur = None, child
             cguard = 0
             while ccur is not None:
@@ -120,13 +125,13 @@ def _outline(bodies, pages, errs):
                 cprev, ccur = ccur, nxt
                 cguard += 1
                 if cguard > len(bodies):
-                    errs.append('boucle dans les enfants du signet %d' % item)
+                    errs.append('loop in the children of bookmark %d' % item)
                     break
             if _ref(b, 'Last') != cprev:
-                errs.append('signet %d : /Last ne ferme pas la chaine' % item)
+                errs.append('bookmark %d: /Last does not close the chain' % item)
             expected = _count(b, 'Count')
             if expected is None or expected != descendants:
-                errs.append('signet %d : /Count %s au lieu de %d' % (item, expected, descendants))
+                errs.append('bookmark %d: /Count %s instead of %d' % (item, expected, descendants))
         return descendants, _ref(b, 'Next')
 
     prev, cur, guard = None, first, 0
@@ -134,12 +139,12 @@ def _outline(bodies, pages, errs):
         _, prev, cur = None, cur, walk(cur, root, prev)[1]
         guard += 1
         if guard > len(bodies):
-            errs.append('boucle dans les signets de premier niveau')
+            errs.append('loop in the top-level bookmarks')
             break
     if prev != last:
-        errs.append('racine : /Last ne ferme pas la chaine')
+        errs.append('root: /Last does not close the chain')
     if _count(body, 'Count') != total:
-        errs.append('racine : /Count %s au lieu de %d' % (_count(body, 'Count'), total))
+        errs.append('root: /Count %s instead of %d' % (_count(body, 'Count'), total))
     return total
 
 
@@ -153,9 +158,9 @@ def _links(bodies, pages, errs):
             links += 1
             page = _dest_page(head)
             if page not in pages:
-                errs.append('lien %d : destination vers l\'objet %s' % (k, page))
+                errs.append('link %d: destination to object %s' % (k, page))
         elif '/A' not in head:
-            errs.append('lien %d : ni /Dest ni /A' % k)
+            errs.append('link %d: neither /Dest nor /A' % k)
     for k, b in bodies.items():
         if not re.search(r'/Type\s*/Page\b', b):
             continue
@@ -165,9 +170,9 @@ def _links(bodies, pages, errs):
         for ref in re.findall(r'(\d+)\s+0\s+R', m.group(1)):
             target = int(ref)
             if target not in bodies:
-                errs.append('page %d : annotation %d introuvable' % (k, target))
+                errs.append('page %d: annotation %d not found' % (k, target))
             elif '/Type /Annot' not in bodies[target]:
-                errs.append('page %d : l\'objet %d n\'est pas une annotation' % (k, target))
+                errs.append('page %d: object %d is not an annotation' % (k, target))
     return links
 
 
@@ -175,7 +180,7 @@ def _references(bodies, errs):
     for k, b in bodies.items():
         for ref in re.findall(r'(\d+)\s+0\s+R', _skip_strings(_head(b))):
             if int(ref) not in bodies:
-                errs.append('objet %d : reference %s 0 R introuvable' % (k, ref))
+                errs.append('object %d: reference %s 0 R not found' % (k, ref))
 
 
 def check(path):
@@ -186,11 +191,11 @@ def check(path):
         errs.append('bad header')
     i = s.rfind('startxref')
     if i < 0:
-        print('%s: pas de startxref' % path)
+        print('%s: no startxref' % path)
         return ['no startxref']
     off = int(s[i+9:].split()[0])
     if s[off:off+4] != 'xref':
-        print('%s: startxref=%d pointe sur %r' % (path, off, s[off:off+16]))
+        print('%s: startxref=%d points to %r' % (path, off, s[off:off+16]))
         return ['startxref does not point to xref']
     m = re.match(r'xref\r?\n0 (\d+)\r?\n', s[off:])
     n = int(m.group(1))
@@ -228,9 +233,9 @@ def check(path):
                 try:
                     raw = zlib.decompress(data.encode('latin1'))
                     if not raw:
-                        errs.append('obj %d flux FlateDecode vide' % k)
+                        errs.append('obj %d empty FlateDecode stream' % k)
                 except Exception as e:
-                    errs.append('obj %d FlateDecode invalide (%s)' % (k, e))
+                    errs.append('obj %d invalid FlateDecode (%s)' % (k, e))
 
     w = re.search(r'trailer\r?\n<<(.*?)>>', s, re.S)
     if not w:
@@ -238,7 +243,7 @@ def check(path):
     else:
         t = w.group(1)
         if '/Root' not in t or '/Size' not in t:
-            errs.append('trailer incomplete')
+            errs.append('incomplete trailer')
         size = int(re.search(r'/Size (\d+)', t).group(1))
         if size != n:
             errs.append('Size %d != xref count %d' % (size, n))
@@ -261,9 +266,10 @@ def check(path):
     links = _links(bodies, page_objects, errs)
     _references(bodies, errs)
 
-    print('%s: %d octets, %d objets, %d flux dont %d compresses, %d signets, %d liens internes, %s' %
-          (path.split('\\')[-1], len(b), n-1, streams, flate, bookmarks, links,
-           'OK' if not errs else 'ERREURS'))
+    print('%s: %d bytes, %s, %s (%d compressed), %s, %s, %s' %
+          (os.path.basename(path), len(b), _plural(n - 1, 'object'), _plural(streams, 'stream'),
+           flate, _plural(bookmarks, 'bookmark'), _plural(links, 'internal link'),
+           'OK' if not errs else 'ERRORS'))
     for e in errs:
         print('  !', e)
     return errs
